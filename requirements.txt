@@ -1,0 +1,23 @@
+streamlit>=1.38
+python-docx>=1.1
+docxtpl>=0.18
+python-dotenv>=1.0
+
+# Génération IA — fournisseur par défaut (FOURNISSEUR_IA=gemini) : gratuit,
+# voir .env.example.
+google-genai>=0.3
+
+# Génération IA — fournisseur alternatif payant (FOURNISSEUR_IA=anthropic).
+# Reste installé même si tu n'utilises que Gemini : ça ne coûte rien de
+# l'avoir sous la main pour plus tard.
+anthropic>=0.34
+
+# Export PDF : utilise Microsoft Word via COM si disponible (Windows/Mac).
+# Sans effet si Word n'est pas installé : l'app se rabat alors automatiquement
+# sur LibreOffice (soffice), puis sur iLovePDF en ligne — voir README.
+docx2pdf>=0.1.8
+
+# Export PDF — repli en ligne (aucun Word/LibreOffice requis, mais le CV/la
+# lettre partent vers les serveurs d'iLovePDF pour la conversion). Utilisé
+# seulement si ILOVEPDF_PUBLIC_KEY/ILOVEPDF_SECRET_KEY sont configurées.
+ilovepdf>=1.0.0

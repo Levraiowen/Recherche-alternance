@@ -1,0 +1,14 @@
+# Secrets
+.env
+
+# Données personnelles (CV, profil, historique, lettres/CV générés)
+data/
+outputs/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Streamlit
+.streamlit/secrets.toml
