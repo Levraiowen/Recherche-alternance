@@ -28,6 +28,7 @@ from urllib.parse import quote
 import streamlit as st
 
 import assistant
+import recherches
 import stockage
 from candidature import ResultatCandidature
 from cv_editor import BlocTexte, extraire_blocs, texte_brut
@@ -189,12 +190,59 @@ def ligne_date(profil: dict | None = None, jour: date | None = None) -> str:
     return f"{ville}, le {date_longue(jour)}" if ville else f"Le {date_longue(jour)}"
 
 
+CLE_RECHERCHE = "recherche_active"  # simple valeur de session (pas la clé du sélecteur lui-même)
+
+
+def recherche_active() -> str:
+    """Profil de recherche choisi (alternance, stage, job étudiant). Retenu
+    d'une session à l'autre dans le profil."""
+    valeur = st.session_state.get(CLE_RECHERCHE)
+    if valeur not in recherches.RECHERCHES:
+        valeur = stockage.charger_profil().get("_recherche_active")
+        if valeur not in recherches.RECHERCHES:
+            valeur = recherches.DEFAUT
+        st.session_state[CLE_RECHERCHE] = valeur
+    return valeur
+
+
+def _cle_selecteur() -> str:
+    return f"choix_recherche_{st.session_state.get('choix_recherche_n', 0)}"
+
+
+def _recherche_changee(cle_widget: str) -> None:
+    valeur = st.session_state.get(cle_widget)
+    if valeur not in recherches.RECHERCHES:
+        # Clic sur la recherche déjà choisie (qui la désélectionne) : on garde
+        # la même, avec un sélecteur neuf. (Le sélecteur n'est jamais modifié
+        # par programme : certaines versions de Streamlit le gèrent mal.)
+        st.session_state["choix_recherche_n"] = st.session_state.get("choix_recherche_n", 0) + 1
+        return
+    st.session_state[CLE_RECHERCHE] = valeur
+    try:
+        stockage.enregistrer_profil({**stockage.charger_profil(), "_recherche_active": valeur})
+    except OSError:
+        pass  # simple confort : le choix reste valable pour cette session
+
+
+def selecteur_recherche() -> None:
+    cle = _cle_selecteur()
+    st.segmented_control(
+        "Recherche", list(recherches.RECHERCHES), default=recherche_active(), key=cle,
+        on_change=_recherche_changee, args=(cle,),
+        format_func=lambda c: f":material/{recherches.RECHERCHES[c].icone}: {recherches.RECHERCHES[c].libelle}",
+        label_visibility="collapsed",
+        help="Chaque recherche a sa description, son CV par défaut, son style de lettre et sa liste de candidatures.",
+    )
+
+
 def entete(titre: str, description: str = "", profil: dict | None = None) -> None:
-    col_titre, col_date = st.columns([3, 1.4], vertical_alignment="top")
+    col_titre, col_date = st.columns([3, 1.6], vertical_alignment="top")
     with col_titre:
         st.title(titre, anchor=False)
     with col_date:
         html(f'<p class="entete-date">{echapper_html(ligne_date(profil))}</p>')
+        with st.container(horizontal=True, horizontal_alignment="right", key="choix_recherche"):
+            selecteur_recherche()
     if description:
         html(f'<p class="entete-texte">{description}</p>')
 

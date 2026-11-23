@@ -8,13 +8,14 @@ import streamlit as st
 
 import ai_client
 import interface as ui
+import recherches
 import stockage
 from lettre_generator import formater_telephone
 
 NOMS_FOURNISSEURS = {"gemini": "Gemini (Google)", "anthropic": "Claude (Anthropic)"}
 
 
-def apercu_entete(profil: dict) -> None:
+def apercu_entete(profil: dict, recherche: str) -> None:
     """Haut d'une lettre, avec les informations enregistrées, sur une vraie feuille."""
     e = ui.echapper_html
     cp_ville = " ".join(p for p in (profil.get("code_postal", ""), profil.get("ville", "")) if p.strip())
@@ -28,12 +29,16 @@ def apercu_entete(profil: dict) -> None:
         f'<p class="nom">{nom}</p>{expediteur or "<p class=vide>Adresse, téléphone et e-mail</p>"}'
         '<div class="ecart"></div><p class="droite nom">Entreprise</p><p class="droite">Service recrutement</p>'
         f'<div class="ecart"></div><p class="droite">{e(ui.ligne_date(profil))}</p>'
-        '<div class="ecart"></div><p class="objet">Objet : Candidature pour un poste en alternance</p>'
+        f'<div class="ecart"></div><p class="objet">Objet : {e(recherches.recherche(recherche).objet_exemple)}</p>'
         f'<div class="ecart"></div><p>Madame, Monsieur,</p>{corps}</div>'
     )
 
 
-def formulaire(profil: dict) -> None:
+def formulaire(profil: dict, recherche: str) -> None:
+    type_recherche = recherches.recherche(recherche)
+    reglages = recherches.reglages(profil, recherche)
+    noms_cvs = [cv.nom for cv in stockage.lister_cvs()]
+    choix_cv = ["Le CV principal", *[n for n in noms_cvs if not n.endswith("(principal)")]]
     with st.form("form_profil", border=False):
         st.subheader("Coordonnées", anchor=False)
         nom = st.text_input("Nom complet", value=profil.get("nom", ""))
@@ -50,13 +55,21 @@ def formulaire(profil: dict) -> None:
         with c4:
             email = st.text_input("E-mail", value=profil.get("email", ""))
             github = st.text_input("GitHub (facultatif)", value=profil.get("github", ""))
-        st.subheader("Ta recherche", anchor=False)
-        contexte_academique = st.text_area(
-            "Formation et contrat recherché", value=profil.get("contexte_academique", ""), height=110,
-            help="L'IA s'en sert pour situer ta candidature : formation, rythme de l'alternance, date de début...",
+        st.subheader(f"Ta recherche : {type_recherche.libelle.lower()}", anchor=False)
+        st.caption("Chaque recherche (alternance, stage, job étudiant) a ses propres réglages : change de recherche "
+                   "en haut à droite pour régler les autres.")
+        contexte = st.text_area(
+            "Ce que tu cherches", value=reglages["contexte"], height=110, placeholder=type_recherche.aide_contexte,
+            help="L'IA s'en sert pour situer ta candidature. " + type_recherche.aide_contexte,
         )
+        cv_actuel = reglages["cv"] if reglages["cv"] in choix_cv else choix_cv[0]
+        cv_defaut = st.selectbox("CV de départ proposé", choix_cv, index=choix_cv.index(cv_actuel),
+                                 help="Le CV choisi d'office dans « Nouvelle candidature » pour cette recherche "
+                                      "(tu peux toujours en changer au moment de générer).")
         if st.form_submit_button("Enregistrer mon profil", type="primary", icon=":material/save:"):
             with ui.signaler_erreur_enregistrement():
+                cv_choisi = "" if cv_defaut == choix_cv[0] else cv_defaut
+                profil = recherches.avec_reglages(profil, recherche, contexte=contexte, cv=cv_choisi)
                 stockage.enregistrer_profil({
                     **profil,
                     "nom": nom.strip(),
@@ -67,7 +80,6 @@ def formulaire(profil: dict) -> None:
                     "email": email.strip(),
                     "linkedin": linkedin.strip(),
                     "github": github.strip(),
-                    "contexte_academique": contexte_academique.strip(),
                 })
                 st.toast("Profil enregistré", icon=":material/check_circle:")
 
@@ -113,15 +125,16 @@ def redaction() -> None:
 # Page
 # ----------------------------------------------------------------------------
 
+recherche = ui.recherche_active()
 ui.entete("Profil", "Tes coordonnées forment l'en-tête de chaque lettre. Elles restent sur ton ordinateur, dans "
           "data/profil.json.", stockage.charger_profil())
 
 col_formulaire, col_cote = st.columns([6, 4], gap="large")
 with col_formulaire:
-    formulaire(stockage.charger_profil())
+    formulaire(stockage.charger_profil(), recherche)
 with col_cote:
     st.caption("En-tête de tes lettres")
-    apercu_entete(stockage.charger_profil())  # relu : montre tout de suite ce qui vient d'être enregistré
+    apercu_entete(stockage.charger_profil(), recherche)  # relu : montre tout de suite ce qui vient d'être enregistré
     st.space("medium")
     sauvegardes()
     st.space("small")

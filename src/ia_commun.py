@@ -14,6 +14,7 @@ import json
 import re
 from dataclasses import dataclass, field
 
+import recherches
 from cv_editor import BlocTexte
 
 # Longueur visée pour le corps de la lettre (tous paragraphes confondus) :
@@ -173,7 +174,7 @@ def schema_candidature(langue: str = "fr") -> dict:
 SCHEMA_CANDIDATURE = schema_candidature("fr")
 
 _SYSTEME_MODELE = f"""Tu aides un candidat français à personnaliser sa candidature (lettre de \
-motivation + CV) pour une offre d'emploi précise, en alternance.
+motivation + CV) pour une offre précise (alternance, stage ou job étudiant).
 
 Règles impératives :
 1. Ne jamais inventer une expérience, un diplôme, une compétence, une date ou \
@@ -204,8 +205,7 @@ qui montre que la lettre est écrite pour CETTE entreprise et CETTE offre ; \
 (2) lien entre la formation/les compétences réelles du candidat et ce que \
 l'annonce recherche ; (3) une expérience, un projet ou une réalisation \
 concrète et nommée du CV ; (4) motivation spécifique pour cette entreprise et \
-ouverture/disponibilité pour un entretien. Le candidat recherche un contrat \
-en alternance : mentionne-le naturellement si le contexte l'indique.
+ouverture/disponibilité pour un entretien. {{regle_contrat}}
 5. La lettre doit tenir sur UNE page A4 : sauf consigne de longueur \
 différente du candidat, le corps (tous paragraphes confondus) fait entre \
 {CORPS_LETTRE_MIN} et {CORPS_LETTRE_MAX} caractères espaces compris. Mieux \
@@ -247,9 +247,15 @@ _REGLE_LANGUE = {
 }
 
 
-def systeme_candidature(langue: str = "fr") -> str:
-    """Prompt système, avec les codes de rédaction de la langue choisie."""
-    return _SYSTEME_MODELE.replace("{regle_langue}", _REGLE_LANGUE.get(langue, _REGLE_LANGUE["fr"]))
+def systeme_candidature(langue: str = "fr", type_recherche: str = "alternance") -> str:
+    """Prompt système, avec les codes de rédaction de la langue choisie et
+    la consigne propre au type de contrat recherché (voir recherches.py)."""
+    profil = recherches.recherche(type_recherche)
+    regle = profil.regle
+    if langue == "en":
+        regle += f" En anglais, ce type de contrat se dit « {profil.nom_contrat_en} »."
+    return (_SYSTEME_MODELE.replace("{regle_langue}", _REGLE_LANGUE.get(langue, _REGLE_LANGUE["fr"]))
+            .replace("{regle_contrat}", regle))
 
 
 SYSTEME = systeme_candidature("fr")
@@ -344,6 +350,7 @@ def construire_message_utilisateur(
     poste_indique: str = "",
     consignes_supplementaires: str = "",
     langue: str = "fr",
+    type_recherche: str = "alternance",
 ) -> str:
     blocs_json = json.dumps(
         [
@@ -360,6 +367,7 @@ def construire_message_utilisateur(
     )
 
     parties_contexte = [
+        f"Type de contrat recherché : {recherches.recherche(type_recherche).libelle.lower()}",
         f"Contexte du candidat : {contexte_academique}" if contexte_academique.strip() else "",
         f"Nom d'entreprise fourni par le candidat : {entreprise_indiquee}" if entreprise_indiquee.strip() else "",
         f"Intitulé de poste fourni par le candidat : {poste_indique}" if poste_indique.strip() else "",

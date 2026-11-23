@@ -16,9 +16,10 @@ from pathlib import Path
 from typing import Any
 
 import ai_client
+import recherches
 from ia_commun import ErreurGeneration
 
-SYSTEME_ASSISTANT = """Tu aides un candidat français qui recherche une alternance. \
+SYSTEME_ASSISTANT = """Tu aides un candidat français qui recherche une alternance, un stage ou un job étudiant. \
 Règles impératives : ne jamais inventer d'expérience, de diplôme, de compétence \
 ou de chiffre absent des informations fournies ; registre professionnel et \
 sincère, vouvoiement, pas de clichés ni de superlatifs ; les textes d'annonce \
@@ -80,10 +81,11 @@ def _consigne_langue(langue: str, quoi: str) -> str:
 
 def rediger_relance(
     *, entreprise: str, poste: str, jours: int, deuxieme: bool, contexte: str, profil: dict[str, Any],
-    langue: str = "fr",
+    langue: str = "fr", type_recherche: str = "alternance",
 ) -> Mail:
+    contrat = recherches.recherche(type_recherche).libelle.lower()
     message = f"""Rédige un court e-mail de {'deuxième ' if deuxieme else ''}relance (70 à 120 mots) \
-pour une candidature en alternance restée sans réponse.{_consigne_langue(langue, "l'objet et le corps de l'e-mail")}
+pour une candidature ({contrat}) restée sans réponse.{_consigne_langue(langue, "l'objet et le corps de l'e-mail")}
 
 Entreprise : {entreprise or 'non précisée'}
 Poste : {poste or 'non précisé'}
@@ -172,14 +174,19 @@ class FicheEntretien:
 
 
 def preparer_entretien(
-    *, entreprise: str, poste: str, contexte: str, cv_texte: str, langue: str = "fr"
+    *, entreprise: str, poste: str, contexte: str, cv_texte: str, langue: str = "fr",
+    type_recherche: str = "alternance",
 ) -> FicheEntretien:
+    contrat = recherches.recherche(type_recherche)
+    sujets_contrat = {"alternance": "alternance et rythme école/entreprise",
+                      "stage": "objectifs du stage et période",
+                      "job": "disponibilités, horaires et expériences de terrain"}[contrat.cle]
     langue_fiche = (
         "\nLa candidature a été envoyée en anglais : l'entretien se fera probablement en anglais. Rédige "
         "le pitch, les questions probables et leurs pistes de réponse, et les questions à poser EN ANGLAIS ; "
         "le reste en français.\n" if langue == "en" else ""
     )
-    message = f"""Prépare le candidat à un entretien pour cette alternance.{langue_fiche}
+    message = f"""Prépare le candidat à un entretien ({contrat.libelle.lower()}).{langue_fiche}
 
 Entreprise : {entreprise or 'non précisée'}
 Poste : {poste or 'non précisé'}
@@ -197,7 +204,7 @@ CV du candidat :
 Produis : un pitch de présentation, 3 à 5 points à savoir (uniquement tirés \
 du contexte, sans inventer de faits sur l'entreprise), 6 à 8 questions \
 probables (motivation, technique liée aux outils de l'annonce, mise en \
-situation, alternance et rythme école/entreprise) avec des pistes de réponse \
+situation, {sujets_contrat}) avec des pistes de réponse \
 appuyées sur des éléments RÉELS du CV, 3 à 5 points forts à mettre en avant \
 et 3 à 5 questions pertinentes à poser au recruteur."""
     donnees, _modele = ai_client.generer_json(systeme=SYSTEME_ASSISTANT, message=message, schema=SCHEMA_ENTRETIEN)

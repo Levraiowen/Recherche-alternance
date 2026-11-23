@@ -92,3 +92,25 @@ def test_consignes_selon_la_langue():
     assert "ANGLAIS" in message
     resultat = construire_resultat(json.loads(json.dumps(DONNEES)), langue="en")
     assert resultat.langue == "en" and resultat.formule_politesse == "Yours sincerely,"
+
+
+def test_consigne_selon_le_type_de_contrat():
+    from ia_commun import construire_message_utilisateur
+
+    assert "JOB ÉTUDIANT" in systeme_candidature("fr", "job") and "{regle_contrat}" not in SYSTEME
+    assert "STAGE" in systeme_candidature("fr", "stage")
+    assert "alternance" in SYSTEME and "internship" in systeme_candidature("en", "stage")
+    message = construire_message_utilisateur(blocs_cv=[], texte_annonce="Annonce", contexte_academique="",
+                                             type_recherche="stage")
+    assert "Type de contrat recherché : stage" in message
+
+
+def test_reglages_des_recherches():
+    import recherches
+
+    ancien = {"contexte_academique": "L3 Data Mining en alternance"}
+    assert recherches.reglages(ancien, "alternance")["contexte"] == "L3 Data Mining en alternance"
+    assert recherches.reglages(ancien, "job") == {"contexte": "", "cv": ""}
+    nouveau = recherches.avec_reglages(ancien, "alternance", contexte=" Nouveau ", cv="")
+    assert nouveau["contexte_academique"] == "Nouveau" and nouveau["recherches"]["alternance"]["contexte"] == "Nouveau"
+    assert recherches.recherche_de({}) == "alternance" and recherches.recherche_de({"recherche": "job"}) == "job"

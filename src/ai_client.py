@@ -70,6 +70,7 @@ def generer_candidature(
     poste_indique: str = "",
     consignes_supplementaires: str = "",
     langue: str = "fr",
+    type_recherche: str = "alternance",
 ) -> ResultatGeneration:
     return _module_fournisseur().generer_candidature(
         blocs_cv=blocs_cv,
@@ -79,4 +80,5 @@ def generer_candidature(
         poste_indique=poste_indique,
         consignes_supplementaires=consignes_supplementaires,
         langue=langue,
+        type_recherche=type_recherche,
     )

@@ -69,8 +69,28 @@ def appels_ia(monkeypatch):
     return appels
 
 
+def _corriger_apptest_ancien(monkeypatch) -> None:
+    """L'outil de test des anciens Streamlit (1.52) ne sait pas relire un
+    sélecteur à choix unique (st.segmented_control) : il parcourt la valeur
+    lettre par lettre. Correctif limité aux tests ; l'app n'est pas concernée."""
+    import streamlit
+    from packaging.version import Version
+    from streamlit.testing.v1 import element_tree
+
+    if Version(streamlit.__version__) >= Version("1.55") or not hasattr(element_tree, "ButtonGroup"):
+        return
+
+    def indices(self):
+        valeur = self.value
+        valeurs = [] if valeur is None else list(valeur) if isinstance(valeur, (list, tuple)) else [valeur]
+        return [self.options.index(self.format_func(v)) for v in valeurs]
+
+    monkeypatch.setattr(element_tree.ButtonGroup, "indices", property(indices))
+
+
 @pytest.fixture
 def app(projet_temporaire, monkeypatch, appels_ia):
+    _corriger_apptest_ancien(monkeypatch)
     stockage.DOSSIER_DATA.mkdir(parents=True)
     construire_cv_exemple(stockage.FICHIER_CV)
     stockage.enregistrer_profil({**stockage.PROFIL_PAR_DEFAUT, "nom": "Camille Martin", "adresse": "1 rue X",
@@ -106,6 +126,10 @@ def _generer(app: AppTest, entreprise: str = "Exemple & Fils", annonce: str = AN
     app.run()
     _bouton(app, "Générer la candidature").click().run()
     assert not app.exception
+
+
+def _selecteur_recherche(app: AppTest):
+    return next(b for b in app.button_group if b.key and b.key.startswith("choix_recherche_"))
 
 
 def _ouvrir_fiche(app: AppTest, identifiant: str) -> None:
@@ -400,3 +424,35 @@ def test_telechargements_limites_aux_fichiers_generes(app: AppTest, tmp_path):
     assert "PDF" not in libelles and "Word" not in libelles
     assert "Fichiers introuvables" in _textes(app)
     assert not any(b.label == "Ouvrir le dossier" for b in app.button)  # dossier hors de outputs/ : jamais ouvert
+
+
+def test_profils_de_recherche(app: AppTest, appels_ia):
+    stockage.DOSSIER_CVS.mkdir(parents=True, exist_ok=True)
+    construire_cv_exemple(stockage.DOSSIER_CVS / "CV Vente.docx")
+    stockage.ajouter_historique({"id": "ancienne", "date": "2026-11-02T10:00:00", "entreprise": "Alternance SA"})
+
+    # Réglages propres au job étudiant : description et CV par défaut
+    _selecteur_recherche(app).set_value("job").run()
+    assert stockage.charger_profil()["_recherche_active"] == "job"  # retenu pour la prochaine fois
+    app.switch_page("vues/profil.py").run()
+    next(t for t in app.text_area if t.label == "Ce que tu cherches").set_value("Disponible le week-end")
+    next(s for s in app.selectbox if s.label == "CV de départ proposé").set_value("CV Vente")
+    _bouton(app, "Enregistrer mon profil").click().run()
+    assert not app.exception
+    profil = stockage.charger_profil()
+    assert profil["recherches"]["job"] == {"contexte": "Disponible le week-end", "cv": "CV Vente"}
+
+    app.switch_page("vues/nouvelle_candidature.py").run()
+    assert app.selectbox(key="f_cv").value == "CV Vente"
+    _generer(app, "Boulangerie Exemple")
+    assert appels_ia[-1]["type_recherche"] == "job"
+    assert appels_ia[-1]["contexte_academique"] == "Disponible le week-end"
+    assert stockage.charger_historique()[0]["recherche"] == "job"
+
+    # Chaque recherche a sa propre liste ; les anciennes candidatures comptent comme alternance
+    app.switch_page(CANDIDATURES).run()
+    assert [b.label for b in app.button if b.key and b.key.startswith("sel_")] == ["Boulangerie Exemple"]
+    _selecteur_recherche(app).set_value("alternance").run()
+    assert [b.label for b in app.button if b.key and b.key.startswith("sel_")] == ["Alternance SA"]
+    _selecteur_recherche(app).set_value("stage").run()
+    assert not app.exception and "Aucune candidature (stage)" in _textes(app)

@@ -1,5 +1,5 @@
 """
-Rapport PDF de la recherche d'alternance : chiffres clés, entonnoir des
+Rapport PDF d'une recherche (alternance, stage ou job étudiant) : chiffres clés, entonnoir des
 candidatures, activité dans le temps, sites d'emploi, délais de réponse,
 relances à faire et liste détaillée.
 
@@ -272,7 +272,8 @@ def _texte(valeur: Any) -> str:
     return escape(_CARACTERES_HORS_POLICE.sub("", str(valeur or "")).strip())
 
 
-def generer_pdf(donnees: DonneesRapport, *, nom: str = "", ville: str = "") -> bytes:
+def generer_pdf(donnees: DonneesRapport, *, nom: str = "", ville: str = "",
+                titre_rapport: str = "Recherche d’alternance") -> bytes:
     from reportlab.graphics.shapes import Circle, Drawing, Line, Rect, String
     from reportlab.lib.colors import HexColor
     from reportlab.lib.enums import TA_RIGHT
@@ -317,7 +318,7 @@ def generer_pdf(donnees: DonneesRapport, *, nom: str = "", ville: str = "") -> b
     # --- En-tête : titre à gauche, lieu et date « comme sur une lettre » à droite
     ligne_date = f"{ville}, le {date_longue(donnees.aujourd_hui)}" if ville else date_longue(donnees.aujourd_hui)
     entete = Table(
-        [[Paragraph("Recherche d’alternance", s_titre), Paragraph(_texte(ligne_date), s_date)],
+        [[Paragraph(_texte(titre_rapport), s_titre), Paragraph(_texte(ligne_date), s_date)],
          [Paragraph(_texte(nom) + "<br/>" + _texte(donnees.libelle_periode), s_sous_titre), ""]],
         colWidths=[largeur_utile * 0.62, largeur_utile * 0.38],
     )
@@ -455,7 +456,7 @@ def generer_pdf(donnees: DonneesRapport, *, nom: str = "", ville: str = "") -> b
     else:
         elements.append(Paragraph("Aucune candidature sur cette période.", s_corps))
 
-    pied = "Rapport généré par l’app Candidatures alternance"
+    pied = "Rapport généré par l’app Candidatures"
 
     class CanevasNumerote(module_canvas.Canvas):
         """Ajoute « page n / total » en pied de page (le total n'est connu qu'à la fin)."""
@@ -484,11 +485,13 @@ def generer_pdf(donnees: DonneesRapport, *, nom: str = "", ville: str = "") -> b
 
     tampon = io.BytesIO()
     document = SimpleDocTemplate(tampon, pagesize=A4, leftMargin=marge, rightMargin=marge, topMargin=16 * mm,
-                                 bottomMargin=22 * mm, title="Rapport de recherche d’alternance",
+                                 bottomMargin=22 * mm, title=titre_rapport,
                                  author=nom or "", subject=donnees.libelle_periode)
     document.build(elements, canvasmaker=CanevasNumerote)
     return tampon.getvalue()
 
 
-def nom_fichier(donnees: DonneesRapport) -> str:
-    return f"Rapport_candidatures_{donnees.aujourd_hui.isoformat()}.pdf"
+def nom_fichier(donnees: DonneesRapport, suffixe: str = "") -> str:
+    """« Rapport_candidatures_stage_2026-11-23.pdf » (suffixe : profil de recherche)."""
+    milieu = f"_{suffixe}" if suffixe else ""
+    return f"Rapport_candidatures{milieu}_{donnees.aujourd_hui.isoformat()}.pdf"

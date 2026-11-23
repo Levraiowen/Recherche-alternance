@@ -12,6 +12,7 @@ import streamlit as st
 import ai_client
 import assistant
 import interface as ui
+import recherches
 import stockage
 import suivi
 from ai_client import ErreurGeneration, generer_candidature
@@ -382,7 +383,7 @@ def afficher_resultat(session: dict) -> None:
 
 
 def generer(*, profil: dict, cv_choisi, annonce: str, entreprise_saisie: str, poste_saisi: str,
-            entreprise_adresse: str, contact: str, consignes: str, langue: str) -> None:
+            entreprise_adresse: str, contact: str, consignes: str, langue: str, recherche: str) -> None:
     with st.status("Génération de ta candidature...", expanded=True) as etat:
         try:
             blocs = extraire_blocs(cv_choisi.chemin)
@@ -391,11 +392,12 @@ def generer(*, profil: dict, cv_choisi, annonce: str, entreprise_saisie: str, po
             resultat = generer_candidature(
                 blocs_cv=blocs,
                 texte_annonce=annonce,
-                contexte_academique=profil.get("contexte_academique", ""),
+                contexte_academique=recherches.reglages(profil, recherche)["contexte"],
                 entreprise_indiquee=entreprise_saisie,
                 poste_indique=poste_saisi,
                 consignes_supplementaires=consignes,
                 langue=langue,
+                type_recherche=recherche,
             )
             etat.write(f":material/check: Contenu rédigé ({resultat.modele})")
             if not resultat.entreprise:
@@ -426,6 +428,7 @@ def generer(*, profil: dict, cv_choisi, annonce: str, entreprise_saisie: str, po
             "url_offre": st.session_state.get("f_url", "").strip(),
             "contact": contact.strip(),
             "cv_reference": cv_choisi.nom,
+            "recherche": recherche,
         })
         try:
             stockage.ajouter_historique(entree)
@@ -454,6 +457,9 @@ def generer(*, profil: dict, cv_choisi, annonce: str, entreprise_saisie: str, po
 
 profil = stockage.charger_profil()
 cvs = stockage.lister_cvs()
+recherche = ui.recherche_active()
+type_recherche = recherches.recherche(recherche)
+reglages = recherches.reglages(profil, recherche)
 ui.entete("Nouvelle candidature",
           "Colle le lien ou le texte d'une offre : ta lettre et ton CV adapté sortent prêts à envoyer, "
           "chacun sur une page.", profil)
@@ -474,9 +480,9 @@ elif not ai_client.cle_api_presente():
         st.warning(f"Aucune clé {fournisseur} configurée. Copie .env.example en .env, ajoute ta clé puis relance "
                    "l'app.", icon=":material/key:")
 else:
-    a_relancer = suivi.candidatures_a_relancer(stockage.charger_historique())
+    a_relancer = suivi.candidatures_a_relancer(recherches.filtrer(stockage.charger_historique(), recherche))
     manquants = stockage.profil_incomplet(profil)
-    if a_relancer or manquants:
+    if a_relancer or manquants or not reglages["contexte"]:
         with st.container(horizontal=True, gap="small", vertical_alignment="center", key="rappels"):
             if a_relancer:
                 st.page_link("vues/candidatures.py", icon=":material/notifications_active:",
@@ -484,6 +490,10 @@ else:
             if manquants:
                 st.page_link("vues/profil.py", icon=":material/person_alert:",
                              label=f"Profil incomplet ({', '.join(manquants)}) : l'en-tête de la lettre le sera aussi")
+            if not reglages["contexte"]:
+                st.page_link("vues/profil.py", icon=":material/edit_note:",
+                             label=f"Décris ta recherche ({type_recherche.libelle.lower()}) pour des lettres plus "
+                                   "justes")
 
     col_offre, col_documents = st.columns([5, 6], gap="large")
     with col_offre:
@@ -515,6 +525,10 @@ else:
                                placeholder="Colle ici le texte complet de l'offre : missions, profil recherché…")
 
         noms_cvs = [cv.nom for cv in cvs]
+        if st.session_state.get("cv_pour_recherche") != f"{recherche}|{reglages['cv']}":
+            # Changement de recherche (ou de son CV par défaut, réglé dans le profil) : on part de ce CV.
+            st.session_state["cv_pour_recherche"] = f"{recherche}|{reglages['cv']}"
+            st.session_state["f_cv"] = reglages["cv"] if reglages["cv"] in noms_cvs else noms_cvs[0]
         if st.session_state.get("f_cv") not in noms_cvs:
             st.session_state.pop("f_cv", None)  # CV supprimé entre-temps : on repart du CV principal
         cv_choisi = cvs[0]
@@ -531,6 +545,8 @@ else:
         langue = langue_de_la_lettre(choix_langue, annonce)
         if choix_langue == "Automatique" and annonce.strip() and langue == "en":
             st.caption(":material/translate: Annonce en anglais : la lettre et l'e-mail seront rédigés en anglais.")
+        st.caption(f":material/{type_recherche.icone}: Candidature {type_recherche.libelle.lower()} : "
+                   f"{type_recherche.resume}.")
 
         with st.expander("Options : adresse, e-mail du recruteur, ton, longueur", icon=":material/tune:"):
             col_c, col_d = st.columns(2)
@@ -555,7 +571,7 @@ else:
         if lancer:
             generer(profil=profil, cv_choisi=cv_choisi, annonce=annonce, entreprise_saisie=entreprise_saisie,
                     poste_saisi=poste_saisi, entreprise_adresse=entreprise_adresse, contact=contact,
-                    consignes=consignes_redaction(ton, longueur, remarques), langue=langue)
+                    consignes=consignes_redaction(ton, longueur, remarques), langue=langue, recherche=recherche)
 
     with col_documents:
         derniere = st.session_state.get("derniere_candidature")

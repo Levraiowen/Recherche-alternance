@@ -107,6 +107,7 @@ def generer_candidature(
     poste_indique: str = "",
     consignes_supplementaires: str = "",
     langue: str = "fr",
+    type_recherche: str = "alternance",
 ) -> ResultatGeneration:
     valider_entrees(texte_annonce, blocs_cv)
     message = construire_message_utilisateur(
@@ -117,7 +118,8 @@ def generer_candidature(
         poste_indique=poste_indique,
         consignes_supplementaires=consignes_supplementaires,
         langue=langue,
+        type_recherche=type_recherche,
     )
-    donnees, modele = generer_json(systeme=systeme_candidature(langue), message=message,
+    donnees, modele = generer_json(systeme=systeme_candidature(langue, type_recherche), message=message,
                                    schema=schema_candidature(langue))
     return construire_resultat(donnees, entreprise_indiquee, poste_indique, modele=modele, langue=langue)

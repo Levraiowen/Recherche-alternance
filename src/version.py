@@ -6,4 +6,4 @@ bloquée en route, ex: conflit de synchro OneDrive sur le Bureau).
 À incrémenter à chaque envoi de fichiers modifiés.
 """
 
-VERSION = "2026-11-23.4"
+VERSION = "2026-11-23.5"

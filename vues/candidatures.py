@@ -13,6 +13,7 @@ import streamlit as st
 import assistant
 import interface as ui
 import rapport
+import recherches
 import stockage
 import suivi
 from ai_client import ErreurGeneration
@@ -125,7 +126,7 @@ def afficher_relances(relances: list[suivi.Relance], profil: dict) -> None:
                             entreprise=entree.get("entreprise", ""), poste=entree.get("poste", ""),
                             jours=relance.jours, deuxieme=relance.deuxieme,
                             contexte=ui.contexte_candidature(entree), profil=profil,
-                            langue=entree.get("langue") or "fr",
+                            langue=entree.get("langue") or "fr", type_recherche=recherches.recherche_de(entree),
                         )
                 except ErreurGeneration as exc:
                     st.error(str(exc))
@@ -142,13 +143,15 @@ def afficher_relances(relances: list[suivi.Relance], profil: dict) -> None:
 def preparer_fiche_entretien(entree: dict, eid: str, dossier) -> None:
     anglais = entree.get("langue") == "en"
     entreprise, poste = entree.get("entreprise", ""), entree.get("poste", "")
-    titre = (f"Interview at {entreprise} ({poste or 'work-study'})" if anglais
-             else f"Entretien chez {entreprise} ({poste or 'alternance'})")
+    contrat = recherches.recherche(recherches.recherche_de(entree))
+    titre = (f"Interview at {entreprise} ({poste or contrat.nom_contrat_en})" if anglais
+             else f"Entretien chez {entreprise} ({poste or contrat.libelle.lower()})")
     try:
         with st.spinner("Préparation de la fiche d'entretien..."):
             fiche = assistant.preparer_entretien(
                 entreprise=entreprise, poste=poste, contexte=ui.contexte_candidature(entree),
                 cv_texte=ui.texte_cv(ui.cv_de_entree(entree)), langue=entree.get("langue") or "fr",
+                type_recherche=recherches.recherche_de(entree),
             )
         modifications = {"fiche_entretien": fiche.en_markdown(titre)}
         if ui.dossier_autorise(dossier):
@@ -336,9 +339,10 @@ def afficher_vue_ensemble(donnees: rapport.DonneesRapport) -> None:
                "préparation d'entretien.")
 
 
-def popover_rapport(historique: list[dict], profil: dict) -> None:
+def popover_rapport(historique: list[dict], profil: dict, recherche: str) -> None:
+    type_recherche = recherches.recherche(recherche)
     with st.popover("Rapport PDF", icon=":material/summarize:"):
-        st.markdown("**Rapport de ta recherche**")
+        st.markdown(f"**Rapport de ta recherche ({type_recherche.libelle.lower()})**")
         st.caption("Un PDF à garder ou à montrer à ton école : chiffres clés, réponses, sites d'emploi, relances "
                    "et détail de chaque candidature.")
         choix = st.selectbox("Période", rapport.PERIODES, key="r_periode")
@@ -352,8 +356,10 @@ def popover_rapport(historique: list[dict], profil: dict) -> None:
         st.caption(f"{donnees.libelle_periode}. {rapport.phrase_resume(donnees)}")
         st.download_button(
             "Télécharger le rapport", key="dl_rapport", type="primary", icon=":material/download:", width="stretch",
-            data=lambda: rapport.generer_pdf(donnees, nom=profil.get("nom", ""), ville=profil.get("ville", "")),
-            file_name=rapport.nom_fichier(donnees), mime=ui.MIME_PDF, on_click="ignore", disabled=not donnees.total,
+            data=lambda: rapport.generer_pdf(donnees, nom=profil.get("nom", ""), ville=profil.get("ville", ""),
+                                             titre_rapport=type_recherche.titre_rapport),
+            file_name=rapport.nom_fichier(donnees, "" if recherche == recherches.DEFAUT else recherche),
+            mime=ui.MIME_PDF, on_click="ignore", disabled=not donnees.total,
         )
 
 
@@ -362,7 +368,8 @@ def popover_rapport(historique: list[dict], profil: dict) -> None:
 # ----------------------------------------------------------------------------
 
 profil = stockage.charger_profil()
-historique = stockage.charger_historique()
+recherche = ui.recherche_active()
+historique = recherches.filtrer(stockage.charger_historique(), recherche)  # seulement la recherche choisie
 ui.entete("Mes candidatures", profil=profil)
 
 erreur_suivi = st.session_state.pop("erreur_suivi", None)
@@ -370,9 +377,10 @@ if erreur_suivi:
     st.error(erreur_suivi, icon=":material/error:")
 
 if not historique:
-    ui.etat_vide("enveloppe", "Aucune candidature pour l'instant",
+    ui.etat_vide("enveloppe", f"Aucune candidature ({recherches.recherche(recherche).libelle.lower()}) pour l'instant",
                  "Chaque candidature générée arrive ici avec sa lettre, son CV et son e-mail. Le suivi des envois et "
-                 "des réponses est facultatif.")
+                 "des réponses est facultatif. Les autres recherches ont leur propre liste : change de recherche en "
+                 "haut à droite.")
     with st.container(horizontal=True, horizontal_alignment="center"):
         st.page_link("vues/nouvelle_candidature.py", label="Préparer ma première candidature",
                      icon=":material/edit_document:")
@@ -383,7 +391,7 @@ else:
         ui.html(f'<p class="resume">{ui.echapper_html(rapport.phrase_resume(ensemble))}</p>')
     with col_rapport:
         with st.container(horizontal=True, horizontal_alignment="right"):
-            popover_rapport(historique, profil)
+            popover_rapport(historique, profil, recherche)
 
     relances = suivi.candidatures_a_relancer(historique)
     if relances:

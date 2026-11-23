@@ -28,7 +28,12 @@ personnalisée à partir d'une offre d'alternance :
 4. Tu relis (aperçu intégré), tu retouches si besoin directement dans l'app
    (un paragraphe peut être reformulé par l'IA d'un clic), tu télécharges,
    tu envoies.
-5. **Facultatif** : tu notes ce que tu as envoyé, et l'app te rappelle quand
+5. **Trois recherches séparées** : alternance, stage et job étudiant. Chacune
+   a sa description de ce que tu cherches, son CV de départ, son style de
+   lettre (plus courte et centrée sur tes disponibilités pour un job
+   étudiant) et sa propre liste de candidatures. On passe de l'une à l'autre
+   en haut à droite de chaque page.
+6. **Facultatif** : tu notes ce que tu as envoyé, et l'app te rappelle quand
    relancer (et rédige la relance), suit tes réponses, prépare tes entretiens
    et produit un **rapport PDF** de ta recherche (candidatures, réponses,
    sites d'emploi les plus efficaces). Rien de tout ça n'est obligatoire.
@@ -71,7 +76,7 @@ personnalisée à partir d'une offre d'alternance :
   Sans, licence OFL, rien n'est chargé depuis Internet), aperçu des documents
   présentés comme des feuilles, liste des candidatures et fiche détaillée
   côte à côte ; rapport PDF mis en page avec reportlab.
-- **Qualité logicielle** : 96 tests automatisés (pytest, dont des
+- **Qualité logicielle** : 99 tests automatisés (pytest, dont des
   tests de l'interface Streamlit de bout en bout et un test d'intégration
   avec un vrai moteur de rendu), analyse statique (ruff), intégration
   continue GitHub Actions.
@@ -162,7 +167,9 @@ sur un Wi-Fi partagé (école, café...), personne d'autre ne peut l'ouvrir
 
 ## Utilisation
 
-L'app a quatre pages, accessibles depuis la barre du haut.
+L'app a quatre pages, accessibles depuis la barre du haut. En haut à droite
+de chaque page, choisis la recherche en cours : **Alternance**, **Stage** ou
+**Job étudiant** (le choix est retenu pour la prochaine fois).
 
 - **Nouvelle candidature** : à gauche l'offre, à droite les documents. Colle
   le lien de l'offre puis clique sur « Importer » (ou colle directement le
@@ -229,9 +236,10 @@ L'app a quatre pages, accessibles depuis la barre du haut.
   voir le texte détecté (les blocs verrouillés ne sont jamais modifiés par
   l'IA : coordonnées, liens, titres de section) et **vérifier qu'un CV tient
   sur une page**.
-- **Profil** : tes coordonnées (en-tête de chaque lettre, avec un aperçu),
-  ta formation et le contrat recherché (utilisés par l'IA pour situer ta
-  candidature), la **sauvegarde** de tes données (téléchargement d'une
+- **Profil** : tes coordonnées (en-tête de chaque lettre, avec un aperçu,
+  communes aux trois recherches), puis pour la recherche en cours : ce que
+  tu cherches (utilisé par l'IA pour situer ta candidature) et le CV de
+  départ proposé, la **sauvegarde** de tes données (téléchargement d'une
   archive, restauration) et le service d'IA utilisé.
 
 ## Une page garantie : comment ça marche
@@ -374,6 +382,7 @@ src/
   assistant.py                  relances, fiches d'entretien, reformulation d'un paragraphe
   interface.py                  éléments d'interface partagés par les pages (style, aperçus, e-mails)
   rapport.py                    chiffres du suivi et rapport PDF (reportlab)
+  recherches.py                 profils de recherche : alternance, stage, job étudiant
   suivi.py                      statuts, relances à faire, statistiques (suivi facultatif)
   stockage.py                   profil, CV, historique, sauvegardes (fichiers locaux)
   version.py                    numéro de version affiché dans l'app
