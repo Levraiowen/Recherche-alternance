@@ -9,6 +9,13 @@ outputs/
 .venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Fichiers temporaires (écritures atomiques)
+*.tmp
 
 # Streamlit
 .streamlit/secrets.toml

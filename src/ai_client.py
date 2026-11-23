@@ -5,9 +5,11 @@ selon la variable d'environnement FOURNISSEUR_IA (voir .env.example).
 - "gemini" (par défaut) : gratuit, via une clé API Gemini (aistudio.google.com).
 - "anthropic" : payant à l'usage, via une clé API Anthropic (console.anthropic.com).
 
-Le reste de l'app (app.py) importe uniquement ce module : le fournisseur
-utilisé n'a donc aucun impact sur le reste du code.
+Le reste de l'app importe uniquement ce module : le fournisseur utilisé n'a
+donc aucun impact sur le reste du code.
 """
+
+from __future__ import annotations
 
 import os
 
@@ -16,6 +18,26 @@ from ia_commun import ErreurGeneration, ResultatGeneration  # noqa: F401 - réex
 
 FOURNISSEUR_PAR_DEFAUT = "gemini"
 FOURNISSEURS_CONNUS = ("gemini", "anthropic")
+
+
+def fournisseur_actif() -> str:
+    return os.environ.get("FOURNISSEUR_IA", "").strip().lower() or FOURNISSEUR_PAR_DEFAUT
+
+
+def modele_configure() -> str:
+    """Modèle qui sera essayé en premier (pour affichage)."""
+    if fournisseur_actif() == "anthropic":
+        from ia_anthropic import MODELE_PAR_DEFAUT
+        return os.environ.get("ANTHROPIC_MODEL", "").strip() or MODELE_PAR_DEFAUT
+    from ia_gemini import MODELE_PAR_DEFAUT
+    return os.environ.get("GEMINI_MODEL", "").strip() or MODELE_PAR_DEFAUT
+
+
+def cle_api_presente() -> bool:
+    """Vérifie qu'une clé est configurée pour le fournisseur actuellement actif."""
+    if fournisseur_actif() == "anthropic":
+        return bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+    return bool(os.environ.get("GEMINI_API_KEY", "").strip())
 
 
 def generer_candidature(
@@ -27,7 +49,7 @@ def generer_candidature(
     poste_indique: str = "",
     consignes_supplementaires: str = "",
 ) -> ResultatGeneration:
-    fournisseur = (os.environ.get("FOURNISSEUR_IA", "").strip().lower() or FOURNISSEUR_PAR_DEFAUT)
+    fournisseur = fournisseur_actif()
 
     if fournisseur == "gemini":
         import ia_gemini as module_fournisseur
@@ -47,14 +69,3 @@ def generer_candidature(
         poste_indique=poste_indique,
         consignes_supplementaires=consignes_supplementaires,
     )
-
-
-def fournisseur_actif() -> str:
-    return (os.environ.get("FOURNISSEUR_IA", "").strip().lower() or FOURNISSEUR_PAR_DEFAUT)
-
-
-def cle_api_presente() -> bool:
-    """Vérifie qu'une clé est configurée pour le fournisseur actuellement actif."""
-    if fournisseur_actif() == "gemini":
-        return bool(os.environ.get("GEMINI_API_KEY", "").strip())
-    return bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())

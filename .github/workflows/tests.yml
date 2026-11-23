@@ -1,0 +1,33 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # LibreOffice + police Carlito (métriques identiques à Calibri) : pour
+      # le test d'intégration qui vérifie la mise en page sur une vraie
+      # conversion PDF (il est simplement ignoré si LibreOffice est absent).
+      - name: Installer LibreOffice
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libreoffice-writer fonts-crosextra-carlito
+
+      - name: Installer les dépendances
+        run: pip install -r requirements-dev.txt
+
+      - name: Vérifier le code (ruff)
+        run: ruff check .
+
+      - name: Lancer les tests
+        run: pytest

@@ -8,10 +8,19 @@ SDK sur ces éléments communs, pour que le résultat (ResultatGeneration) soit
 identique quel que soit le fournisseur utilisé.
 """
 
+from __future__ import annotations
+
 import json
 from dataclasses import dataclass, field
 
 from cv_editor import BlocTexte
+
+# Longueur visée pour le corps de la lettre (tous paragraphes confondus) :
+# avec l'en-tête, c'est ce qui tient confortablement sur une page A4 en
+# Calibri 11. Le moteur de mise en page rattrape de toute façon un léger
+# dépassement, mais viser juste évite d'avoir à resserrer la mise en page.
+CORPS_LETTRE_MIN = 1300
+CORPS_LETTRE_MAX = 1900
 
 SCHEMA_CANDIDATURE = {
     "type": "object",
@@ -29,7 +38,10 @@ SCHEMA_CANDIDATURE = {
             "properties": {
                 "objet": {
                     "type": "string",
-                    "description": "Ligne d'objet, ex: 'Candidature au poste de Data Analyst en alternance'.",
+                    "description": (
+                        "Objet de la lettre, SANS le mot « Objet : » au début, ex: "
+                        "'Candidature au poste de Data Analyst en alternance'."
+                    ),
                 },
                 "formule_appel": {
                     "type": "string",
@@ -41,21 +53,22 @@ SCHEMA_CANDIDATURE = {
                     "minItems": 3,
                     "maxItems": 4,
                     "description": (
-                        "3 à 4 paragraphes courts (2 à 5 phrases chacun) formant le corps de "
-                        "la lettre, dans cet ordre : (1) accroche spécifique à l'entreprise et "
-                        "à l'offre - pas une formule passe-partout, (2) formation et "
-                        "compétences réelles du candidat en lien avec ce que l'annonce "
-                        "recherche, (3) une expérience, un projet ou une réalisation concrète "
-                        "et nommée du CV qui illustre ces compétences en action, (4) motivation "
-                        "propre à cette entreprise (en écho à un élément repéré dans l'annonce) "
-                        "et ouverture/disponibilité pour un entretien. Chaque paragraphe doit "
-                        "s'appuyer sur des éléments nommés et réels du CV et de l'annonce, "
-                        "jamais sur des généralités interchangeables."
+                        "3 à 4 paragraphes (2 à 4 phrases chacun) formant le corps de la "
+                        f"lettre, entre {CORPS_LETTRE_MIN} et {CORPS_LETTRE_MAX} caractères AU TOTAL "
+                        "(espaces compris), dans cet ordre : (1) accroche spécifique à "
+                        "l'entreprise et à l'offre - pas une formule passe-partout, (2) "
+                        "formation et compétences réelles du candidat en lien avec ce que "
+                        "l'annonce recherche, (3) une expérience, un projet ou une "
+                        "réalisation concrète et nommée du CV qui illustre ces compétences "
+                        "en action, (4) motivation propre à cette entreprise (en écho à un "
+                        "élément repéré dans l'annonce) et ouverture/disponibilité pour un "
+                        "entretien. Chaque paragraphe s'appuie sur des éléments nommés et "
+                        "réels du CV et de l'annonce, jamais sur des généralités."
                     ),
                 },
                 "formule_politesse": {
                     "type": "string",
-                    "description": "Formule de politesse finale.",
+                    "description": "Formule de politesse finale, cohérente avec la formule d'appel.",
                 },
             },
             "required": ["objet", "formule_appel", "paragraphes", "formule_politesse"],
@@ -63,8 +76,8 @@ SCHEMA_CANDIDATURE = {
         "cv_adaptations": {
             "type": "array",
             "description": (
-                "Uniquement les blocs du CV dont le texte doit changer pour "
-                "coller à l'offre. Ne pas inclure les blocs inchangés."
+                "Uniquement les blocs du CV (marqués modifiable: true) dont le texte "
+                "doit changer pour coller à l'offre. Ne pas inclure les blocs inchangés."
             ),
             "items": {
                 "type": "object",
@@ -79,19 +92,24 @@ SCHEMA_CANDIDATURE = {
     "required": ["entreprise", "poste", "lettre", "cv_adaptations"],
 }
 
-SYSTEME = """Tu aides un candidat français à personnaliser sa candidature (lettre de \
+SYSTEME = f"""Tu aides un candidat français à personnaliser sa candidature (lettre de \
 motivation + CV) pour une offre d'emploi précise, en alternance.
 
 Règles impératives :
 1. Ne jamais inventer une expérience, un diplôme, une compétence, une date ou \
 un chiffre qui n'apparaît pas dans le CV fourni. Tu peux reformuler, \
-réorganiser l'emphase, ou légèrement raccourcir/étoffer une formulation \
-existante pour coller à l'offre, mais le fond doit rester strictement fidèle \
-à la réalité du CV fourni.
-2. Pour chaque bloc de CV que tu modifies, vise une longueur proche de la \
-longueur d'origine (indiquée en nombre de caractères) pour ne pas casser la \
-mise en page du document Word. N'inclus dans cv_adaptations que les blocs \
-réellement modifiés.
+réorganiser l'emphase, ou raccourcir une formulation existante pour coller à \
+l'offre, mais le fond doit rester strictement fidèle à la réalité du CV fourni.
+2. Le CV doit continuer à tenir sur UNE page : pour chaque bloc de CV que tu \
+modifies, le nouveau texte ne doit JAMAIS dépasser sa "longueur_max" (en \
+caractères) et doit idéalement rester proche de sa "longueur" d'origine. Ne \
+modifie que les blocs marqués "modifiable": true. Garde à l'identique le \
+libellé de début de ligne (ex: « Langages de programmation : ») et les \
+dates/durées de fin de ligne (ex: « | 2026 – 2027 »), qui ont une mise en \
+forme particulière. N'inclus dans cv_adaptations que les blocs réellement \
+modifiés : 2 à 6 blocs bien choisis valent mieux que des retouches partout. \
+Adapter la ligne d'accroche sous le nom (titre du CV) à l'intitulé du poste \
+est souvent l'adaptation la plus utile.
 3. Avant de rédiger, repère dans le CV fourni 2 à 4 éléments concrets et \
 nommés (intitulé exact d'une expérience, d'un stage, d'un projet \
 académique, d'une formation, d'un outil ou logiciel maîtrisé, d'un résultat \
@@ -100,30 +118,26 @@ nommés (mission précise, technologie ou outil demandé, secteur d'activité, \
 activité ou particularité de l'entreprise, valeur mise en avant). La lettre \
 doit construire des ponts explicites entre ces deux listes plutôt que de \
 rester générale : chaque affirmation doit pouvoir se rattacher à un élément \
-réel du CV ou de l'annonce, jamais à une généralité qui conviendrait à \
-n'importe quel candidat ou n'importe quelle entreprise.
-4. Structure les paragraphes autour de ces éléments concrets, dans cet \
-esprit : (1) accroche qui montre que la lettre est écrite pour CETTE \
-entreprise et CETTE offre précisément ; (2) lien entre la formation/les \
-compétences réelles du candidat et ce que l'annonce recherche ; (3) une \
-expérience, un projet ou une réalisation concrète et nommée du CV qui \
-illustre ces compétences en action ; (4) motivation spécifique pour cette \
-entreprise, en écho à un élément repéré dans l'annonce, et \
-ouverture/disponibilité pour un entretien. Le candidat est à la recherche \
-d'un contrat en alternance : mentionne-le naturellement si le contexte \
-fourni l'indique.
-5. Respecte scrupuleusement les codes d'une lettre de motivation française \
-classique, même en la personnalisant fortement : registre soutenu et \
-vouvoiement du début à la fin, ton sincère et mesuré (éviter les \
-superlatifs et formules clichées du type « passionné(e) depuis mon plus \
-jeune âge » ou « dynamique et motivé(e) »), aucune liste à puces ni mise en \
-forme markdown dans le texte de la lettre, paragraphes courts (2 à 5 \
-phrases). La personnalisation ne doit jamais se faire au détriment de ce \
-format attendu par un recruteur.
-6. Si le nom de l'entreprise ou l'intitulé du poste sont fournis \
+réel du CV ou de l'annonce.
+4. Structure les paragraphes autour de ces éléments concrets : (1) accroche \
+qui montre que la lettre est écrite pour CETTE entreprise et CETTE offre ; \
+(2) lien entre la formation/les compétences réelles du candidat et ce que \
+l'annonce recherche ; (3) une expérience, un projet ou une réalisation \
+concrète et nommée du CV ; (4) motivation spécifique pour cette entreprise et \
+ouverture/disponibilité pour un entretien. Le candidat recherche un contrat \
+en alternance : mentionne-le naturellement si le contexte l'indique.
+5. La lettre doit tenir sur UNE page A4 : le corps (tous paragraphes \
+confondus) fait entre {CORPS_LETTRE_MIN} et {CORPS_LETTRE_MAX} caractères \
+espaces compris. Mieux vaut une lettre dense et précise qu'une lettre longue.
+6. Respecte les codes d'une lettre de motivation française classique : \
+registre soutenu et vouvoiement, ton sincère et mesuré (pas de superlatifs ni \
+de clichés du type « passionné depuis mon plus jeune âge » ou « dynamique et \
+motivé »), aucune liste à puces ni mise en forme markdown, paragraphes \
+courts. La personnalisation ne doit jamais se faire au détriment de ce format.
+7. Si le nom de l'entreprise ou l'intitulé du poste sont fournis \
 explicitement dans le contexte, utilise-les tels quels plutôt que de les \
 redéduire de l'annonce.
-7. Réponds UNIQUEMENT avec un objet JSON valide respectant exactement le \
+8. Réponds UNIQUEMENT avec un objet JSON valide respectant exactement le \
 schéma demandé. Pas de texte avant ou après, pas de bloc markdown ```.
 """
 
@@ -137,6 +151,11 @@ class ResultatGeneration:
     paragraphes: list[str]
     formule_politesse: str
     cv_adaptations: dict[str, str] = field(default_factory=dict)
+    modele: str = ""  # modèle d'IA ayant réellement produit le contenu
+
+    @property
+    def longueur_corps(self) -> int:
+        return sum(len(p) for p in self.paragraphes)
 
 
 class ErreurGeneration(Exception):
@@ -146,6 +165,11 @@ class ErreurGeneration(Exception):
 def valider_entrees(texte_annonce: str, blocs_cv: list[BlocTexte]) -> None:
     if not texte_annonce.strip():
         raise ErreurGeneration("Colle le texte de l'annonce avant de générer la candidature.")
+    if len(texte_annonce.strip()) < 80:
+        raise ErreurGeneration(
+            "L'annonce collée est très courte : colle le texte complet de l'offre "
+            "(missions, profil recherché...) pour que la lettre soit vraiment personnalisée."
+        )
     if not blocs_cv:
         raise ErreurGeneration("Aucun texte détecté dans le CV importé (voir l'onglet Mon CV).")
 
@@ -160,7 +184,16 @@ def construire_message_utilisateur(
     consignes_supplementaires: str = "",
 ) -> str:
     blocs_json = json.dumps(
-        [{"id": b.id, "texte": b.texte, "longueur": b.longueur} for b in blocs_cv],
+        [
+            {
+                "id": b.id,
+                "texte": b.texte,
+                "modifiable": b.modifiable,
+                "longueur": b.longueur,
+                "longueur_max": b.longueur_max,
+            }
+            for b in blocs_cv
+        ],
         ensure_ascii=False,
     )
 
@@ -181,8 +214,8 @@ Annonce collée par le candidat :
 {texte_annonce.strip()}
 ---
 
-Blocs de texte détectés dans le CV du candidat (format JSON, un identifiant \
-et une longueur en caractères par bloc) :
+Blocs de texte détectés dans le CV du candidat (format JSON : identifiant, \
+texte, modifiable, longueur et longueur_max en caractères) :
 ---
 {blocs_json}
 ---
@@ -192,33 +225,65 @@ l'annonce ci-dessus (voir consignes système), puis génère la candidature au \
 format JSON demandé en t'appuyant explicitement dessus."""
 
 
+def extraire_json(texte: str) -> dict:
+    """Décode la réponse JSON de l'IA, en tolérant un éventuel bloc
+    markdown ```json ... ``` ou du texte autour de l'objet."""
+    texte = (texte or "").strip()
+    if texte.startswith("```"):
+        texte = texte.strip("`")
+        if texte.lower().startswith("json"):
+            texte = texte[4:]
+    try:
+        donnees = json.loads(texte)
+    except json.JSONDecodeError:
+        debut, fin = texte.find("{"), texte.rfind("}")
+        if debut == -1 or fin <= debut:
+            raise ValueError("aucun objet JSON trouvé dans la réponse") from None
+        try:
+            donnees = json.loads(texte[debut:fin + 1])
+        except json.JSONDecodeError as exc:
+            raise ValueError(str(exc)) from exc
+    if not isinstance(donnees, dict):
+        raise ValueError("la réponse n'est pas un objet JSON")
+    return donnees
+
+
+def _texte(valeur) -> str:
+    return valeur.strip() if isinstance(valeur, str) else ""
+
+
 def construire_resultat(
-    donnees: dict, entreprise_indiquee: str = "", poste_indique: str = ""
+    donnees: dict, entreprise_indiquee: str = "", poste_indique: str = "", modele: str = ""
 ) -> ResultatGeneration:
     try:
         lettre = donnees["lettre"]
-        paragraphes = list(lettre["paragraphes"])
+        paragraphes = [_texte(p) for p in lettre["paragraphes"]]
+        adaptations = {}
+        for item in donnees.get("cv_adaptations") or []:
+            if isinstance(item, dict) and _texte(item.get("id")) and isinstance(item.get("nouveau_texte"), str):
+                adaptations[_texte(item["id"])] = item["nouveau_texte"].strip()
         resultat = ResultatGeneration(
-            entreprise=(donnees.get("entreprise") or entreprise_indiquee or "").strip(),
-            poste=(donnees.get("poste") or poste_indique or "").strip(),
-            objet=lettre["objet"],
-            formule_appel=lettre["formule_appel"],
-            paragraphes=paragraphes,
-            formule_politesse=lettre["formule_politesse"],
-            cv_adaptations={
-                item["id"]: item["nouveau_texte"] for item in donnees.get("cv_adaptations", [])
-            },
+            # Le nom saisi par le candidat a priorité sur celui deviné par l'IA.
+            entreprise=_texte(entreprise_indiquee) or _texte(donnees.get("entreprise")),
+            poste=_texte(poste_indique) or _texte(donnees.get("poste")),
+            objet=_texte(lettre["objet"]),
+            formule_appel=_texte(lettre["formule_appel"]),
+            paragraphes=[p for p in paragraphes if p],
+            formule_politesse=_texte(lettre["formule_politesse"]),
+            cv_adaptations=adaptations,
+            modele=modele,
         )
-    except (KeyError, TypeError) as exc:
+    except (KeyError, TypeError, AttributeError) as exc:
         raise ErreurGeneration(f"Réponse de l'IA incomplète ou mal formée : {exc}") from exc
 
     # Filet de sécurité : le schéma demande 3-4 paragraphes non vides, mais
-    # rien ne garantit à 100% qu'un fournisseur le respecte toujours à la
-    # lettre. Mieux vaut un message d'erreur clair ici qu'une lettre sans
-    # corps envoyée par erreur.
-    if not any(p.strip() for p in resultat.paragraphes):
+    # rien ne garantit à 100% qu'un fournisseur le respecte toujours.
+    if not resultat.paragraphes:
         raise ErreurGeneration(
-            "Réponse de l'IA incomplète : la lettre générée n'a aucun "
-            "paragraphe. Réessaie la génération."
+            "Réponse de l'IA incomplète : la lettre générée n'a aucun paragraphe. Réessaie la génération."
+        )
+    if not resultat.formule_politesse:
+        resultat.formule_politesse = (
+            "Je vous prie d'agréer, Madame, Monsieur, l'expression de mes salutations distinguées."
         )
     return resultat

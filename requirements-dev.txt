@@ -1,0 +1,8 @@
+# Outils de développement : tests automatisés et vérification du code.
+#   pip install -r requirements-dev.txt
+#   ruff check .
+#   pytest
+-r requirements.txt
+pytest>=8
+ruff>=0.6
+reportlab>=4

@@ -20,17 +20,19 @@ sur un modèle différent (voir MODELES_SECOURS), et abandonne seulement si
 TOUS les modèles de la liste ont échoué.
 
 Le choix des modèles par défaut vient de données réelles (tableau de bord
-aistudio.google.com/rate-limit d'un utilisateur) : les modèles "Flash"
-normaux (gemini-3.5-flash, 3.6-flash, 3.7-flash, 3.8-flash...) partagent
-tous la même petite limite gratuite (5 requêtes/minute, 20/jour), alors que
-certaines variantes "Flash Lite" (gemini-3.5-flash-lite, 3.1-flash-lite)
-ont un palier bien plus généreux (15/minute, 500/jour) — un modèle "Lite"
-est largement suffisant pour rédiger une lettre de motivation structurée.
-Cette répartition n'est pas documentée officiellement et peut changer côté
-Google sans préavis : d'où le mécanisme de bascule automatique en secours.
+aistudio.google.com/rate-limit d'un utilisateur) : les variantes "Flash Lite"
+(gemini-3.5-flash-lite, gemini-3.1-flash-lite) ont un palier gratuit bien
+plus généreux que les modèles "Flash" normaux, et un modèle "Lite" est
+largement suffisant pour rédiger une lettre de motivation structurée.
+Google fait évoluer sa gamme régulièrement (ex: en octobre 2026,
+gemini-3.7-flash a été remplacé par gemini-3.8-flash et gemini-3.5-flash
+par gemini-3.6-flash, voir ai.google.dev/gemini-api/docs/changelog) : d'où
+le mécanisme de bascule automatique en secours, et la variable GEMINI_MODEL
+pour forcer un autre modèle sans toucher au code.
 """
 
-import json
+from __future__ import annotations
+
 import os
 import time
 
@@ -42,16 +44,18 @@ from ia_commun import (
     ResultatGeneration,
     construire_message_utilisateur,
     construire_resultat,
+    extraire_json,
     valider_entrees,
 )
 
 MODELE_PAR_DEFAUT = "gemini-3.5-flash-lite"
 
 # Modèles essayés, dans l'ordre, si le modèle demandé (ou par défaut) répond
-# "quota atteint" ou "modèle indisponible" : deux autres "Flash Lite" (gros
-# quota gratuit confirmé : voir docstring), puis deux "Flash" normaux (petit
-# quota, mais séparé de celui du modèle principal, donc encore une chance).
-MODELES_SECOURS = ["gemini-3.1-flash-lite", "gemini-3.6-flash", "gemini-3.7-flash"]
+# "quota atteint" ou "modèle indisponible" : un autre "Flash Lite" (gros
+# quota gratuit), puis deux "Flash" normaux (petit quota, mais séparé de
+# celui du modèle principal, donc encore une chance). Liste à jour de
+# novembre 2026 (modèles stables listés sur ai.google.dev/gemini-api/docs/models).
+MODELES_SECOURS = ["gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-3.6-flash"]
 
 REESSAIS_MAX = 2  # 1 seule retentative (pas 2) : le palier gratuit a peu de
 # requêtes par jour, chaque retentative en consomme une réelle en plus.
@@ -189,13 +193,20 @@ def generer_candidature(
 
     try:
         from google import genai
+    except ImportError as exc:
+        raise ErreurGeneration(
+            "Le module Python « google-genai » n'est pas installé : relance l'app via "
+            "Lancer.bat ou lance pip install -r requirements.txt."
+        ) from exc
 
+    try:
         client = genai.Client(api_key=cle)
-        reponse, _modele_utilise = _generer_avec_secours(
+        reponse, modele_utilise = _generer_avec_secours(
             client,
             modeles=modeles_a_essayer,
-            contenu=f"{SYSTEME}\n\n{message}",
+            contenu=message,
             config={
+                "system_instruction": SYSTEME,
                 "response_mime_type": "application/json",
                 "response_json_schema": SCHEMA_CANDIDATURE,
             },
@@ -207,11 +218,20 @@ def generer_candidature(
 
     texte_reponse = (getattr(reponse, "text", None) or "").strip()
     if not texte_reponse:
-        raise ErreurGeneration("Réponse vide reçue de l'API Gemini.")
+        raison = ""
+        try:
+            raison = str(reponse.candidates[0].finish_reason or "")
+        except (AttributeError, IndexError, TypeError):
+            pass
+        raise ErreurGeneration(
+            "Réponse vide reçue de l'API Gemini"
+            + (f" (motif : {raison})" if raison else "")
+            + ". Réessaie la génération ; si ça se reproduit, raccourcis l'annonce collée."
+        )
 
     try:
-        donnees = json.loads(texte_reponse)
-    except json.JSONDecodeError as exc:
+        donnees = extraire_json(texte_reponse)
+    except ValueError as exc:
         raise ErreurGeneration(f"Réponse Gemini non JSON valide : {exc}") from exc
 
-    return construire_resultat(donnees, entreprise_indiquee, poste_indique)
+    return construire_resultat(donnees, entreprise_indiquee, poste_indique, modele=modele_utilise)

@@ -1,0 +1,9 @@
+# Scripts Windows : fins de ligne Windows (CRLF), quel que soit l'OS qui commit.
+*.bat text eol=crlf
+*.vbs text eol=crlf
+
+# Fichiers binaires
+*.docx binary
+*.ico binary
+*.png binary
+*.pdf binary

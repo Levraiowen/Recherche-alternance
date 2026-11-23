@@ -1,0 +1,13 @@
+# Réglages Streamlit de l'app (pris en compte automatiquement au lancement).
+
+[browser]
+# L'app tourne en local avec des données personnelles : pas de statistiques
+# d'utilisation envoyées à Streamlit.
+gatherUsageStats = false
+
+[theme]
+primaryColor = "#1F3864"
+
+[client]
+# App personnelle locale : on masque le bouton « Deploy » et le menu développeur.
+toolbarMode = "minimal"
