@@ -88,7 +88,8 @@ def _resoudre_modeles_a_essayer(modele_demande: str) -> list[str]:
     return modeles
 
 
-# Statuts d'erreur pour lesquels changer de modèle a une chance de résoudre
+# Statuts d'erreur (en plus des surcharges serveur 5xx, toujours concernées)
+# pour lesquels changer de modèle a une chance de résoudre
 # le problème : quota atteint sur CE modèle précis, ou modèle qui n'existe
 # plus / n'est plus accessible (Google en retire de temps en temps). Une
 # mauvaise clé API ou une autre erreur ne seraient pas résolues en changeant
@@ -108,6 +109,14 @@ def _generer_avec_secours(client, *, modeles: list[str], contenu: str, config: d
         dernier_modele = index == len(modeles) - 1
         try:
             return _appeler_avec_reessai(client, modele=modele, contenu=contenu, config=config), modele
+        except genai_errors.ServerError as exc:
+            # Surcharge (503) ou panne (5xx) persistante sur CE modèle, même
+            # après la retentative : les autres modèles tournent souvent sur
+            # d'autres serveurs, on tente donc le suivant.
+            derniere_erreur = exc
+            if not dernier_modele:
+                continue
+            raise
         except genai_errors.ClientError as exc:
             derniere_erreur = exc
             statut = getattr(exc, "status", "") or ""
@@ -127,9 +136,10 @@ def _message_erreur(exc: Exception, modeles_essayes: list[str] | None = None) ->
         statut = getattr(exc, "status", "") or ""
         return (
             f"Les serveurs Gemini sont momentanément surchargés (erreur {code} "
-            f"{statut}). L'app a réessayé {REESSAIS_MAX} fois automatiquement "
-            "sans succès — c'est un problème temporaire côté Google, pas un "
-            "souci avec ta clé ou ton quota : réessaie dans une minute ou deux."
+            f"{statut}). L'app a essayé {len(modeles_essayes) or 1} modèle(s) "
+            f"({', '.join(modeles_essayes)}) sans succès — c'est un problème "
+            "temporaire côté Google, pas un souci avec ta clé ou ton quota : "
+            "réessaie dans une minute ou deux."
         )
     if isinstance(exc, genai_errors.ClientError):
         statut = getattr(exc, "status", "") or ""

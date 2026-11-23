@@ -42,7 +42,7 @@ personnalisée à partir d'une offre d'alternance :
 - **Robustesse et données** : écritures JSON atomiques, récupération après
   corruption, dossiers de sortie isolés par génération, historique
   consultable avec détection des candidatures en double.
-- **Qualité logicielle** : 36 tests automatisés (pytest, dont un test de
+- **Qualité logicielle** : 39 tests automatisés (pytest, dont un test de
   l'interface Streamlit de bout en bout et un test d'intégration avec un
   vrai moteur de rendu), analyse statique (ruff), intégration continue
   GitHub Actions.
