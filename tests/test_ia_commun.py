@@ -4,10 +4,14 @@ import pytest
 
 from cv_editor import BlocTexte
 from ia_commun import (
+    SYSTEME,
     ErreurGeneration,
     construire_message_utilisateur,
     construire_resultat,
+    detecter_langue,
     extraire_json,
+    schema_candidature,
+    systeme_candidature,
     valider_entrees,
 )
 
@@ -61,3 +65,30 @@ def test_message_contient_les_contraintes_de_longueur():
 def test_annonce_trop_courte():
     with pytest.raises(ErreurGeneration):
         valider_entrees("Data analyst", [BlocTexte("p1", "x", 1)])
+
+
+ANNONCE_EN = ("We are looking for a Data Analyst apprentice to join our Customer Insights team in Paris. "
+              "You will build dashboards with Power BI, work with SQL and Python, and present your findings "
+              "to the business teams. What we offer: a 12-month work-study contract and a friendly team.")
+ANNONCE_FR = ("Nous recherchons un alternant Data Analyst pour rejoindre notre équipe Customer Insights. Vous "
+              "construirez des dashboards Power BI, travaillerez avec SQL et Python et présenterez vos analyses "
+              "aux équipes métier. Le poste est basé à Paris, avec un rythme de 3 semaines en entreprise.")
+
+
+def test_detection_de_la_langue_de_l_annonce():
+    assert detecter_langue(ANNONCE_EN) == "en"
+    assert detecter_langue(ANNONCE_FR) == "fr"  # les termes techniques anglais ne font pas basculer
+    assert detecter_langue("") == "fr"
+
+
+def test_consignes_selon_la_langue():
+    anglais = systeme_candidature("en")
+    assert "ANGLAIS" in anglais and "Dear Hiring Manager" in anglais and "française classique" not in anglais
+    assert "française classique" in SYSTEME and "{" not in SYSTEME
+    exemple = schema_candidature("en")["properties"]["lettre"]["properties"]["formule_appel"]["description"]
+    assert "Dear Hiring Manager" in exemple
+    message = construire_message_utilisateur(blocs_cv=[], texte_annonce=ANNONCE_EN, contexte_academique="",
+                                             langue="en")
+    assert "ANGLAIS" in message
+    resultat = construire_resultat(json.loads(json.dumps(DONNEES)), langue="en")
+    assert resultat.langue == "en" and resultat.formule_politesse == "Yours sincerely,"

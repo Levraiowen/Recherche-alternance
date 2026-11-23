@@ -69,6 +69,7 @@ def generer_candidature(
     entreprise_indiquee: str = "",
     poste_indique: str = "",
     consignes_supplementaires: str = "",
+    langue: str = "fr",
 ) -> ResultatGeneration:
     return _module_fournisseur().generer_candidature(
         blocs_cv=blocs_cv,
@@ -77,4 +78,5 @@ def generer_candidature(
         entreprise_indiquee=entreprise_indiquee,
         poste_indique=poste_indique,
         consignes_supplementaires=consignes_supplementaires,
+        langue=langue,
     )

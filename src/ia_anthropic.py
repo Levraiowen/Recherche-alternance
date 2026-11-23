@@ -16,12 +16,12 @@ import os
 
 from cv_editor import BlocTexte
 from ia_commun import (
-    SCHEMA_CANDIDATURE,
-    SYSTEME,
     ErreurGeneration,
     ResultatGeneration,
     construire_message_utilisateur,
     construire_resultat,
+    schema_candidature,
+    systeme_candidature,
     valider_entrees,
 )
 
@@ -106,6 +106,7 @@ def generer_candidature(
     entreprise_indiquee: str = "",
     poste_indique: str = "",
     consignes_supplementaires: str = "",
+    langue: str = "fr",
 ) -> ResultatGeneration:
     valider_entrees(texte_annonce, blocs_cv)
     message = construire_message_utilisateur(
@@ -115,6 +116,8 @@ def generer_candidature(
         entreprise_indiquee=entreprise_indiquee,
         poste_indique=poste_indique,
         consignes_supplementaires=consignes_supplementaires,
+        langue=langue,
     )
-    donnees, modele = generer_json(systeme=SYSTEME, message=message, schema=SCHEMA_CANDIDATURE)
-    return construire_resultat(donnees, entreprise_indiquee, poste_indique, modele=modele)
+    donnees, modele = generer_json(systeme=systeme_candidature(langue), message=message,
+                                   schema=schema_candidature(langue))
+    return construire_resultat(donnees, entreprise_indiquee, poste_indique, modele=modele, langue=langue)

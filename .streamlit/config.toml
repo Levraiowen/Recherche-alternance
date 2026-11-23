@@ -11,14 +11,130 @@ gatherUsageStats = false
 # qui sur le même réseau pourrait ouvrir l'app, voir ton CV et utiliser ta clé
 # d'IA. Le navigateur s'ouvre sur http://127.0.0.1:8501 (ou localhost:8501).
 address = "127.0.0.1"
+# Sert le dossier static/ (polices de l'interface, logo) à l'app elle-même.
+enableStaticServing = true
 
 [client]
 # Masque les options de développeur (bouton « Deploy »...) mais garde le menu
 # ⋮ > Settings, qui permet de passer en thème clair ou sombre.
 toolbarMode = "viewer"
 
+# ---------------------------------------------------------------------------
+# Thème « papier et encre » : une seule couleur d'action (le bleu encre), des
+# filets fins, Spectral pour les titres et Instrument Sans pour le reste.
+# Les deux polices sont fournies avec l'app (static/polices, licence OFL) :
+# rien n'est chargé depuis Internet.
+# ---------------------------------------------------------------------------
+
+[theme]
+font = "Instrument Sans, sans-serif"
+headingFont = "Spectral, Georgia, serif"
+# Les blocs « à copier » (e-mail, texte de la lettre) gardent leur bouton de
+# copie mais s'affichent dans la police de l'interface, pas en police de code.
+codeFont = "Instrument Sans, sans-serif"
+codeFontSize = "0.92rem"
+baseFontSize = 15
+baseRadius = "0.6rem"
+buttonRadius = "0.6rem"
+showWidgetBorder = true
+linkUnderline = false
+headingFontSizes = ["2.45rem", "1.6rem", "1.28rem", "1.08rem", "0.98rem", "0.9rem"]
+headingFontWeights = [500, 500, 600, 600, 600, 600]
+chartCategoricalColors = ["#4F5FE0", "#8B63DA", "#2F9E6A", "#D08A2E", "#D3554C", "#8A90A0"]
+
 [theme.light]
-primaryColor = "#1F3864"
+primaryColor = "#3346D3"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F3F5F9"
+textColor = "#1B2030"
+linkColor = "#3346D3"
+borderColor = "#E3E6EE"
+codeBackgroundColor = "#F3F5F9"
+blueColor = "#3346D3"
+blueBackgroundColor = "#EBEEFC"
+blueTextColor = "#2A3AB8"
 
 [theme.dark]
-primaryColor = "#7AA2F7"
+# Encre un peu plus soutenue que les liens : le texte blanc des boutons
+# principaux reste bien lisible.
+primaryColor = "#5B6CF0"
+backgroundColor = "#101525"
+secondaryBackgroundColor = "#1A2034"
+textColor = "#E6E9F2"
+linkColor = "#9AA8FF"
+borderColor = "#262E45"
+codeBackgroundColor = "#171D30"
+blueColor = "#8E9CFF"
+blueBackgroundColor = "#1E2650"
+blueTextColor = "#B9C2FF"
+
+# Polices de l'interface (servies depuis static/polices).
+[[theme.fontFaces]]
+family = "Instrument Sans"
+url = "app/static/polices/instrument-sans-latin-wght-normal.woff2"
+weight = "400 700"
+style = "normal"
+unicodeRange = "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+
+[[theme.fontFaces]]
+family = "Instrument Sans"
+url = "app/static/polices/instrument-sans-latin-ext-wght-normal.woff2"
+weight = "400 700"
+style = "normal"
+unicodeRange = "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF"
+
+[[theme.fontFaces]]
+family = "Spectral"
+url = "app/static/polices/spectral-latin-400-normal.woff2"
+weight = "400"
+style = "normal"
+unicodeRange = "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+
+[[theme.fontFaces]]
+family = "Spectral"
+url = "app/static/polices/spectral-latin-ext-400-normal.woff2"
+weight = "400"
+style = "normal"
+unicodeRange = "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF"
+
+[[theme.fontFaces]]
+family = "Spectral"
+url = "app/static/polices/spectral-latin-400-italic.woff2"
+weight = "400"
+style = "italic"
+unicodeRange = "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+
+[[theme.fontFaces]]
+family = "Spectral"
+url = "app/static/polices/spectral-latin-ext-400-italic.woff2"
+weight = "400"
+style = "italic"
+unicodeRange = "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF"
+
+[[theme.fontFaces]]
+family = "Spectral"
+url = "app/static/polices/spectral-latin-500-normal.woff2"
+weight = "500"
+style = "normal"
+unicodeRange = "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+
+[[theme.fontFaces]]
+family = "Spectral"
+url = "app/static/polices/spectral-latin-ext-500-normal.woff2"
+weight = "500"
+style = "normal"
+unicodeRange = "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF"
+
+[[theme.fontFaces]]
+family = "Spectral"
+url = "app/static/polices/spectral-latin-600-normal.woff2"
+weight = "600"
+style = "normal"
+unicodeRange = "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+
+[[theme.fontFaces]]
+family = "Spectral"
+url = "app/static/polices/spectral-latin-ext-600-normal.woff2"
+weight = "600"
+style = "normal"
+unicodeRange = "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF"

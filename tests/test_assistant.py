@@ -33,6 +33,15 @@ def test_relance(ia_factice):
     assert "12 jours" in appels[0]["message"] and "ignore" in appels[0]["systeme"]
 
 
+def test_relance_et_fiche_dans_la_langue_de_la_candidature(ia_factice):
+    appels = ia_factice({"objet": "Follow-up", "corps": "Dear Hiring Manager,", "pitch": "I am Camille.",
+                         "questions": [{"question": "Why us?", "piste": "Because..."}]})
+    assistant.rediger_relance(entreprise="E", poste="P", jours=12, deuxieme=False, contexte="", profil={},
+                              langue="en")
+    assistant.preparer_entretien(entreprise="E", poste="P", contexte="", cv_texte="", langue="en")
+    assert all("ANGLAIS" in appel["message"] for appel in appels)
+
+
 def test_relance_vide_refusee(ia_factice):
     ia_factice({"objet": "x", "corps": "  "})
     with pytest.raises(ErreurGeneration):

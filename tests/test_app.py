@@ -1,5 +1,6 @@
 """Test de l'interface Streamlit de bout en bout (sans appel réel à l'IA) :
-génération, retouches, suivi, relances, préparation d'entretien, doublons."""
+génération, lettre en anglais, retouches, navigation entre les pages, suivi,
+relances, fiche d'une candidature, rapport, CV et profil."""
 
 import json
 from datetime import date, timedelta
@@ -11,12 +12,18 @@ from streamlit.testing.v1 import AppTest
 
 import ai_client
 import import_offre
+import interface
 import stockage
 from conftest import construire_cv_exemple
 from ia_commun import ResultatGeneration
 from import_offre import OffreImportee
 
 APP = Path(__file__).resolve().parent.parent / "app.py"
+CANDIDATURES = "vues/candidatures.py"
+ANNONCE = "Nous recherchons un alternant Data Analyst (SQL, Power BI). " * 3
+ANNONCE_EN = ("We are looking for a Data Analyst apprentice to join our team. You will build dashboards with "
+              "Power BI and analyse data with SQL and Python. The position is based in Paris and you will work "
+              "with the sales teams on a weekly basis.")
 
 
 def _fausse_generation(**kwargs) -> ResultatGeneration:
@@ -34,6 +41,7 @@ def _fausse_generation(**kwargs) -> ResultatGeneration:
         score=72,
         points_forts=["SQL et Python"],
         mots_cles_manquants=["Tableau"],
+        langue=kwargs.get("langue", "fr"),
     )
 
 
@@ -49,7 +57,20 @@ def _faux_json(*, systeme, message, schema):
 
 
 @pytest.fixture
-def app(projet_temporaire, monkeypatch):
+def appels_ia(monkeypatch):
+    """Paramètres reçus par la (fausse) génération."""
+    appels: list[dict] = []
+
+    def generation(**kwargs):
+        appels.append(kwargs)
+        return _fausse_generation(**kwargs)
+
+    monkeypatch.setattr(ai_client, "generer_candidature", generation)
+    return appels
+
+
+@pytest.fixture
+def app(projet_temporaire, monkeypatch, appels_ia):
     stockage.DOSSIER_DATA.mkdir(parents=True)
     construire_cv_exemple(stockage.FICHIER_CV)
     stockage.enregistrer_profil({**stockage.PROFIL_PAR_DEFAUT, "nom": "Camille Martin", "adresse": "1 rue X",
@@ -57,7 +78,6 @@ def app(projet_temporaire, monkeypatch):
                                  "email": "c@example.com"})
     monkeypatch.setenv("FOURNISSEUR_IA", "gemini")
     monkeypatch.setenv("GEMINI_API_KEY", "cle-de-test")
-    monkeypatch.setattr(ai_client, "generer_candidature", _fausse_generation)
     monkeypatch.setattr(ai_client, "generer_json", _faux_json)
     test = AppTest.from_file(str(APP), default_timeout=180)
     test.run()
@@ -65,44 +85,99 @@ def app(projet_temporaire, monkeypatch):
     return test
 
 
-def _bouton(test: AppTest, debut: str):
-    return next(b for b in test.button if b.label.startswith(debut))
+def _bouton(test: AppTest, libelle: str):
+    return next(b for b in test.button if b.label == libelle)
 
 
-def _generer(app: AppTest, entreprise: str = "Exemple & Fils") -> None:
+def _textes(test: AppTest) -> str:
+    """Tout le texte affiché (markdown, légendes, alertes), pour les vérifications."""
+    morceaux = [e.value for e in (*test.markdown, *test.caption, *test.info, *test.success, *test.warning,
+                                  *test.error, *test.subheader)]
+    return "\n".join(str(m) for m in morceaux)
+
+
+def _liens(test: AppTest) -> list[str]:
+    return [lien.proto.label for lien in test.get("page_link")]
+
+
+def _generer(app: AppTest, entreprise: str = "Exemple & Fils", annonce: str = ANNONCE) -> None:
     app.text_input(key="f_entreprise").set_value(entreprise)
-    app.text_area(key="f_annonce").set_value("Nous recherchons un alternant Data Analyst (SQL, Power BI). " * 3)
+    app.text_area(key="f_annonce").set_value(annonce)
     app.run()
-    _bouton(app, "✨ Générer").click().run()
+    _bouton(app, "Générer la candidature").click().run()
     assert not app.exception
 
 
-def test_generation_retouche_et_doublon(app: AppTest):
+def _ouvrir_fiche(app: AppTest, identifiant: str) -> None:
+    app.switch_page(CANDIDATURES).run()
+    app.button(key=f"sel_{interface.cle_css(identifiant)}").click().run()
+    assert not app.exception
+
+
+def test_generation_retouche_et_doublon(app: AppTest, appels_ia):
     _generer(app)
+    assert appels_ia[-1]["langue"] == "fr"  # annonce en français : lettre en français
     historique = json.loads(stockage.FICHIER_HISTORIQUE.read_text(encoding="utf-8"))
     assert len(historique) == 1 and historique[0]["entreprise"] == "Exemple & Fils"
     assert historique[0]["score"] == 72 and historique[0]["annonce"].startswith("Nous recherchons")
+    assert historique[0]["langue"] == "fr"
     lettre = stockage.resoudre_chemin(historique[0]["lettre_docx"])
     assert lettre.exists() and lettre.name == "Lettre_Motivation_Camille_Martin_(Exemple & Fils).docx"
-    assert any("bloc introuvable" in c.value for c in app.caption)
-    assert any("72 %" in m.value for m in app.metric)  # analyse de correspondance
+    textes = _textes(app)
+    assert "bloc introuvable" in textes
+    assert "72&nbsp;%" in textes  # analyse de correspondance
     assert any("Veuillez trouver ci-joint" in c.value for c in app.code)  # e-mail copiable
 
     # Reformulation d'un paragraphe par l'IA, puis régénération des fichiers
-    _bouton(app, "🔄 Reformuler").click().run()
+    _bouton(app, "Reformuler").click().run()
     assert not app.exception
     assert app.text_area(key=f"ed_p0_{historique[0]['id']}").value == "Paragraphe réécrit par l'IA."
-    _bouton(app, "♻️ Mettre à jour").click().run()
+    _bouton(app, "Mettre à jour les fichiers").click().run()
     assert not app.exception
     assert any("Paragraphe réécrit par l’IA" in p.text for p in Document(str(lettre)).paragraphs)
 
     # Marquer comme envoyée (facultatif)
-    _bouton(app, "📤 Je l'ai envoyée").click().run()
+    _bouton(app, "Je l'ai envoyée").click().run()
     assert stockage.charger_historique()[0]["statut"] == "envoyee"
 
     # Deuxième candidature pour la même entreprise : doublon signalé
-    _bouton(app, "✨ Générer").click().run()
-    assert any("déjà généré 1 candidature" in i.value for i in app.info)
+    _bouton(app, "Générer la candidature").click().run()
+    assert "Une autre candidature a déjà été préparée pour cette entreprise" in _textes(app)
+
+
+def test_lettre_en_anglais(app: AppTest, appels_ia):
+    # Langue « Automatique » : une annonce en anglais donne une lettre en anglais
+    app.text_area(key="f_annonce").set_value(ANNONCE_EN).run()
+    assert "Annonce en anglais" in _textes(app)
+    _generer(app, "Nova Energy", ANNONCE_EN)
+    assert appels_ia[-1]["langue"] == "en"
+    entree = stockage.charger_historique()[0]
+    assert entree["langue"] == "en"
+    lettre = stockage.resoudre_chemin(entree["lettre_docx"])
+    assert lettre.name == "Cover_Letter_Camille_Martin_(Nova Energy).docx"
+    paragraphes = [p.text for p in Document(str(lettre)).paragraphs]
+    assert any(p.startswith("Subject: ") for p in paragraphes)
+    assert "Lettre en anglais" in _textes(app)
+
+    # Choix forcé : la langue demandée l'emporte sur celle de l'annonce
+    app.selectbox(key="f_langue").set_value("Français").run()
+    _bouton(app, "Générer la candidature").click().run()
+    assert appels_ia[-1]["langue"] == "fr"
+
+
+def test_navigation_garde_le_formulaire_et_les_retouches(app: AppTest):
+    _generer(app)
+    eid = stockage.charger_historique()[0]["id"]
+    app.text_area(key=f"ed_p0_{eid}").set_value("Mon paragraphe retouché.").run()
+    app.text_input(key="f_remarques").set_value("Insiste sur SQL").run()
+    for page in ("vues/cv.py", CANDIDATURES, "vues/profil.py"):
+        app.switch_page(page).run()
+        assert not app.exception, page
+    app.switch_page("vues/nouvelle_candidature.py").run()
+    assert not app.exception
+    assert app.text_area(key="f_annonce").value == ANNONCE
+    assert app.text_input(key="f_remarques").value == "Insiste sur SQL"
+    assert app.text_area(key=f"ed_p0_{eid}").value == "Mon paragraphe retouché."
 
 
 def test_suivi_relance_et_entretien(app: AppTest):
@@ -111,46 +186,77 @@ def test_suivi_relance_et_entretien(app: AppTest):
                                  "poste": "Analyste", "statut": "envoyee", "date_envoi": il_y_a_15_jours,
                                  "annonce": "Annonce mémorisée"})
     app.run()
-    assert any("1 candidature(s) à relancer" in i.value for i in app.info)
-    _bouton(app, "✉️ Rédiger la relance").click().run()
+    assert "1 candidature à relancer" in _liens(app)
+    app.switch_page(CANDIDATURES).run()
+    assert not app.exception
+    _bouton(app, "Rédiger la relance").click().run()
     assert not app.exception and any("revenir vers vous" in c.value for c in app.code)
-    _bouton(app, "✔️ Marquer comme relancée").click().run()
+    _bouton(app, "Marquer comme relancée").click().run()
     assert stockage.charger_historique()[0]["statut"] == "relancee"
 
-    _bouton(app, "🎤 Préparer l'entretien").click().run()
+    app.button(key=f"sel_{interface.cle_css('ancienne')}").click().run()
+    _bouton(app, "Préparer l'entretien").click().run()
     assert not app.exception
     assert "Pourquoi nous ?" in stockage.charger_historique()[0]["fiche_entretien"]
 
-    # Changement de statut depuis la liste
-    statut = next(s for s in app.selectbox if s.key and s.key.startswith("h_statut_"))
-    statut.set_value("🎤 Entretien").run()
+    # Changement de statut depuis la fiche
+    app.selectbox(key=f"h_statut_{interface.cle_css('ancienne')}").set_value("entretien").run()
     assert stockage.charger_historique()[0]["statut"] == "entretien"
+    assert stockage.charger_historique()[0]["date_reponse"] == date.today().isoformat()
 
 
 def test_statut_affiche_suit_les_changements_faits_ailleurs(app: AppTest):
     il_y_a_15_jours = (date.today() - timedelta(days=15)).isoformat()
-    for i in range(3):  # plusieurs cartes identiques : aucune collision d'identifiant de champ
-        stockage.ajouter_historique({"id": f"e{i}", "date": f"{il_y_a_15_jours}T10:0{i}:00", "entreprise": f"Ent {i}",
-                                     "poste": "Analyste", "statut": "envoyee", "date_envoi": il_y_a_15_jours})
-    app.run()
-    statuts = [s for s in app.selectbox if s.key and s.key.startswith("h_statut_")]
-    assert [s.value for s in statuts] == ["📤 Envoyée"] * 3
-    _bouton(app, "✔️ Marquer comme relancée").click().run()
+    stockage.ajouter_historique({"id": "e0", "date": f"{il_y_a_15_jours}T10:00:00", "entreprise": "Ent 0",
+                                 "poste": "Analyste", "statut": "envoyee", "date_envoi": il_y_a_15_jours})
+    _ouvrir_fiche(app, "e0")
+    cle = f"h_statut_{interface.cle_css('e0')}"
+    assert app.selectbox(key=cle).value == "envoyee"
+    _bouton(app, "Marquer comme relancée").click().run()  # depuis le panneau des relances
     assert not app.exception
-    relancees = [e["id"] for e in stockage.charger_historique() if e["statut"] == "relancee"]
-    affiches = {s.key.split("_", 3)[-1]: s.value for s in app.selectbox if s.key and s.key.startswith("h_statut_")}
-    assert len(relancees) == 1 and affiches[relancees[0]] == "🔔 Relancée"
-    assert sorted(affiches.values()).count("📤 Envoyée") == 2
+    assert app.selectbox(key=cle).value == "relancee"
+
+
+def test_liste_recherche_filtre_et_fermeture_de_la_fiche(app: AppTest):
+    for i, (nom, statut) in enumerate((("Alpha", "envoyee"), ("Beta", ""), ("Gamma", "refusee"))):
+        stockage.ajouter_historique({"id": f"l{i}", "date": f"2026-11-1{i}T10:00:00", "entreprise": nom,
+                                     "poste": "Data", "statut": statut, "date_envoi": "2026-11-15" if statut else ""})
+    app.switch_page(CANDIDATURES).run()
+    lignes = [b.label for b in app.button if b.key and b.key.startswith("sel_")]
+    assert lignes == ["Gamma", "Beta", "Alpha"]  # plus récentes en premier
+    app.text_input(key="h_recherche").set_value("alp").run()
+    assert [b.label for b in app.button if b.key and b.key.startswith("sel_")] == ["Alpha"]
+    app.text_input(key="h_recherche").set_value("").run()
+    app.button_group(key="h_filtre").set_value(["refusee"]).run()
+    assert [b.label for b in app.button if b.key and b.key.startswith("sel_")] == ["Gamma"]
+    app.button(key=f"sel_{interface.cle_css('l2')}").click().run()
+    assert "Vue d'ensemble" not in _textes(app)
+    _bouton(app, "Vue d'ensemble").click().run()
+    assert "Vue d'ensemble" in _textes(app) and "candidature_ouverte" not in app.session_state
+
+
+def test_rapport_et_export(app: AppTest):
+    stockage.ajouter_historique({"id": "r1", "date": "2026-11-02T10:00:00", "entreprise": "Rapport SA",
+                                 "poste": "Data", "statut": "entretien", "date_envoi": "2026-11-03",
+                                 "date_reponse": "2026-11-10"})
+    app.switch_page(CANDIDATURES).run()
+    libelles = [b.proto.label for b in app.get("download_button")]
+    assert "Télécharger le rapport" in libelles and "Exporter pour Excel" in libelles
+    assert "1 candidature préparée, 1 envoyée, 1 réponse (100\u00a0%) et 1 entretien." in _textes(app)
+    app.selectbox(key="r_periode").set_value("Personnalisée").run()
+    assert not app.exception and app.date_input(key="r_plage")
+    app.date_input(key="r_plage").set_value((date(2026, 10, 1), date(2026, 10, 31))).run()
+    assert "Aucune candidature sur cette période." in _textes(app)
 
 
 def test_texte_de_la_lettre_et_nouvelle_offre(app: AppTest):
     _generer(app)
     texte = next(c.value for c in app.code if c.value.startswith("Madame, Monsieur,\n\nPremier paragraphe"))
     assert texte.endswith("Camille Martin")  # lettre en texte brut, signée
-    _bouton(app, "🧹 Nouvelle offre").click().run()
+    _bouton(app, "Nouvelle offre").click().run()
     assert not app.exception
     assert app.text_area(key="f_annonce").value == "" and app.text_input(key="f_entreprise").value == ""
-    assert not any("Candidature prête" in s.value for s in app.success)  # résultat précédent masqué
+    assert "Tes documents apparaîtront ici" in _textes(app)  # résultat précédent masqué
 
 
 def test_import_ne_garde_pas_les_champs_de_l_offre_precedente(app: AppTest, monkeypatch):
@@ -162,22 +268,22 @@ def test_import_ne_garde_pas_les_champs_de_l_offre_precedente(app: AppTest, monk
     }
     monkeypatch.setattr(import_offre, "importer_offre", lambda url: offres[url])
     app.text_input(key="f_url").set_value("https://offres.exemple.org/a").run()
-    _bouton(app, "📥 Importer").click().run()
+    _bouton(app, "Importer").click().run()
     assert app.text_input(key="f_poste").value == "Data Analyst"
     app.text_input(key="f_contact").set_value("rh@alpha.example").run()
-    _bouton(app, "✨ Générer").click().run()
+    _bouton(app, "Générer la candidature").click().run()
     assert not app.exception
 
     # Offre B (sans données structurées) : rien de l'offre A ne doit rester
     app.text_input(key="f_url").set_value("https://offres.exemple.org/b").run()
-    _bouton(app, "📥 Importer").click().run()
+    _bouton(app, "Importer").click().run()
     assert app.text_area(key="f_annonce").value.startswith("Offre B.")
     for cle in ("f_entreprise", "f_poste", "f_adresse", "f_contact"):
         assert app.text_input(key=cle).value == "", cle
 
     # Ce que l'utilisateur tape lui-même pour l'offre en cours n'est jamais effacé
     app.text_input(key="f_entreprise").set_value("Beta").run()
-    _bouton(app, "📥 Importer").click().run()
+    _bouton(app, "Importer").click().run()
     assert app.text_input(key="f_entreprise").value == "Beta"
 
 
@@ -186,22 +292,37 @@ def test_cv_supplementaire_choix_et_suppression_confirmee(app: AppTest):
     construire_cv_exemple(stockage.DOSSIER_CVS / "CV Marketing.docx")
     app.run()
     assert "CV Marketing" in app.selectbox(key="f_cv").options  # choix du CV de départ
+    app.selectbox(key="f_cv").set_value("CV Marketing").run()
+    app.switch_page("vues/cv.py").run()
+    assert not app.exception
     _bouton(app, "Oui, supprimer").click().run()  # bouton placé dans la fenêtre de confirmation
     assert not app.exception
     assert not (stockage.DOSSIER_CVS / "CV Marketing.docx").exists()
     assert stockage.FICHIER_CV.exists()  # le CV principal n'est jamais supprimé
+    app.switch_page("vues/nouvelle_candidature.py").run()  # le CV choisi n'existe plus : aucun plantage
+    assert not app.exception
 
 
 def test_notes_et_date_d_envoi(app: AppTest):
     stockage.ajouter_historique({"id": "n1", "date": "2026-11-02T10:00:00", "entreprise": "Notes SA", "poste": "Data"})
-    app.run()
-    app.date_input[0].set_value(date(2026, 11, 3))
+    _ouvrir_fiche(app, "n1")
+    next(d for d in app.date_input if d.label == "Date d'envoi").set_value(date(2026, 11, 3))
     next(t for t in app.text_area if t.label == "Notes").set_value("Contact : Mme Exemple")
-    _bouton(app, "💾 Enregistrer").click().run()
+    _bouton(app, "Enregistrer").click().run()
     assert not app.exception
     entree = stockage.charger_historique()[0]
     assert entree["date_envoi"] == "2026-11-03" and entree["notes"] == "Contact : Mme Exemple"
     assert entree["statut"] == "envoyee"  # une date d'envoi suffit à la compter comme envoyée
+
+
+def test_profil_et_apercu_de_l_en_tete(app: AppTest):
+    app.switch_page("vues/profil.py").run()
+    assert not app.exception
+    next(t for t in app.text_input if t.label == "Ville").set_value("Nanterre")
+    _bouton(app, "Enregistrer mon profil").click().run()
+    assert not app.exception
+    assert stockage.charger_profil()["ville"] == "Nanterre"
+    assert "Nanterre, le " in _textes(app)  # aperçu de l'en-tête mis à jour tout de suite
 
 
 def test_mise_a_jour_pendant_que_l_app_tourne(app: AppTest, monkeypatch):
@@ -210,8 +331,7 @@ def test_mise_a_jour_pendant_que_l_app_tourne(app: AppTest, monkeypatch):
     monkeypatch.setattr(version, "VERSION", "ancienne-version")  # modules restés en mémoire
     app.run()
     assert not app.exception
-    assert app.title[0].value == "🔄 Mise à jour installée"
-    assert not app.tabs  # rien d'autre n'est affiché tant que l'app n'est pas relancée
+    assert [t.value for t in app.title] == ["Mise à jour installée"]  # rien d'autre tant que l'app n'est pas relancée
 
 
 def _textes_cv(entree: dict) -> str:
@@ -228,24 +348,24 @@ def test_retouches_rien_n_est_perdu_apres_mise_a_jour(app: AppTest):
     eid = stockage.charger_historique()[0]["id"]
     # Paragraphe 2 vidé : retiré de la lettre, mais les 3 zones restent affichées
     app.text_area(key=f"ed_p1_{eid}").set_value("")
-    _bouton(app, "♻️ Mettre à jour").click().run()
+    _bouton(app, "Mettre à jour les fichiers").click().run()
     assert not app.exception
     lettre = _paragraphes_lettre(stockage.charger_historique()[0])
     assert any(p.startswith("Troisième") for p in lettre) and not any(p.startswith("Deuxième") for p in lettre)
     assert app.text_area(key=f"ed_p2_{eid}").value.startswith("Troisième")
     # Une seconde mise à jour (objet seulement) garde bien le 3e paragraphe
-    app.text_input(key=f"ed_objet_{eid}").set_value("Candidature — Data Analyst (alternance)")
-    _bouton(app, "♻️ Mettre à jour").click().run()
+    app.text_input(key=f"ed_objet_{eid}").set_value("Candidature, Data Analyst (alternance)")
+    _bouton(app, "Mettre à jour les fichiers").click().run()
     assert any(p.startswith("Troisième") for p in _paragraphes_lettre(stockage.charger_historique()[0]))
 
     # Modification du CV décochée : retirée du CV, mais toujours proposée (et réactivable)
     case = f"ed_cv_on_t0_r0_c0_p1_{eid}"
     assert "Data Analyst" in _textes_cv(stockage.charger_historique()[0])
     app.checkbox(key=case).uncheck()
-    _bouton(app, "♻️ Mettre à jour").click().run()
+    _bouton(app, "Mettre à jour les fichiers").click().run()
     assert "Data Analyst" not in _textes_cv(stockage.charger_historique()[0])
     app.checkbox(key=case).check()
-    _bouton(app, "♻️ Mettre à jour").click().run()
+    _bouton(app, "Mettre à jour les fichiers").click().run()
     assert "Data Analyst" in _textes_cv(stockage.charger_historique()[0])
 
 
@@ -263,9 +383,9 @@ def test_nouvelle_annonce_collee_a_la_main(app: AppTest):
     assert not app.exception
     for cle in ("f_entreprise", "f_adresse", "f_contact"):
         assert app.text_input(key=cle).value == "", cle
-    assert any("Nouvelle annonce" in i.value for i in app.info)
+    assert "Nouvelle annonce" in _textes(app)
     app.text_input(key="f_entreprise").set_value("Beta SAS").run()
-    _bouton(app, "✨ Générer").click().run()
+    _bouton(app, "Générer la candidature").click().run()
     entree = stockage.charger_historique()[0]
     assert entree["contact"] == "" and not any("Alpha" in p for p in _paragraphes_lettre(entree))
 
@@ -275,8 +395,8 @@ def test_telechargements_limites_aux_fichiers_generes(app: AppTest, tmp_path):
     secret.write_bytes(b"%PDF-1.7 donnees personnelles")
     stockage.ajouter_historique({"id": "piege", "date": "2026-11-20T10:00:00", "entreprise": "Piège SA",
                                  "lettre_pdf": str(secret), "dossier": str(tmp_path)})
-    app.run()
-    assert not app.exception
+    _ouvrir_fiche(app, "piege")
     libelles = [b.proto.label for b in app.get("download_button")]
-    assert not any("Lettre PDF" in libelle for libelle in libelles)
-    assert any("Fichiers introuvables" in c.value for c in app.caption)
+    assert "PDF" not in libelles and "Word" not in libelles
+    assert "Fichiers introuvables" in _textes(app)
+    assert not any(b.label == "Ouvrir le dossier" for b in app.button)  # dossier hors de outputs/ : jamais ouvert

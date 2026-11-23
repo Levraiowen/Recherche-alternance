@@ -15,6 +15,9 @@ beautifulsoup4>=4.12
 # Roues précompilées pour Windows, Mac et Linux : rien d'autre à installer.
 pypdfium2>=4.20
 
+# Rapport PDF de la recherche d'alternance (chiffres, graphiques, tableau).
+reportlab>=4.0
+
 # Génération IA — fournisseur par défaut (FOURNISSEUR_IA=gemini) : gratuit,
 # voir .env.example. 1.21+ : sortie JSON structurée (response_json_schema).
 google-genai>=1.21

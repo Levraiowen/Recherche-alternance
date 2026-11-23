@@ -11,7 +11,9 @@ balise est écrite en un seul bloc, donc le gabarit reste fiable.
 Mise en page : format A4 (pas US Letter, le format par défaut de
 python-docx), présentation classique d'une lettre française :
 expéditeur en haut à gauche, destinataire à droite, puis lieu et date,
-objet, corps justifié, formule de politesse et signature.
+objet, corps justifié, formule de politesse et signature. Le même gabarit
+sert aux lettres en anglais : les textes fixes (« Objet : » / « Subject: »,
+ligne de date) sont fournis par src/lettre_generator.py selon la langue.
 
 Pour changer la mise en page de la lettre (police, taille, alignement,
 espacements...), modifie ce script puis relance-le :
@@ -35,7 +37,6 @@ SORTIE = RACINE / "templates" / "lettre_template.docx"
 POLICE = "Calibri"
 TAILLE_CORPS = Pt(11)
 TAILLE_PETIT = Pt(10)
-INSECABLE = " "  # espace insécable (typographie française : « Objet : »)
 
 # A4 en twips (1/20e de point) : 21 x 29,7 cm.
 LARGEUR_A4 = Twips(11906)
@@ -96,11 +97,10 @@ def construire():
     balise(doc, "{%p endfor %}")
 
     # --- Lieu et date (droite) ---
-    paragraphe(doc, "{{ ville_signature }}, le {{ date_lettre }}", taille=TAILLE_PETIT,
-               alignement=droite, espace_avant=14, espace_apres=0)
+    paragraphe(doc, "{{ ligne_date }}", taille=TAILLE_PETIT, alignement=droite, espace_avant=14, espace_apres=0)
 
     # --- Objet ---
-    paragraphe(doc, f"Objet{INSECABLE}: {{{{ objet }}}}", gras=True, alignement=gauche,
+    paragraphe(doc, "{{ libelle_objet }}{{ objet }}", gras=True, alignement=gauche,
                espace_avant=22, espace_apres=16)
 
     # --- Formule d'appel ---

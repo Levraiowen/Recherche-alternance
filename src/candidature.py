@@ -45,12 +45,14 @@ class ResultatCandidature:
         return " + ".join(sorted(methodes))
 
 
-def noms_fichiers(nom_personne: str, entreprise: str) -> tuple[str, str]:
+def noms_fichiers(nom_personne: str, entreprise: str, langue: str = "fr") -> tuple[str, str]:
     """Noms des fichiers (sans extension), ex :
-    Lettre_Motivation_Owen_Charpentier_(Entreprise) et CV_Owen_Charpentier_(Entreprise)."""
+    Lettre_Motivation_Owen_Charpentier_(Entreprise) et CV_Owen_Charpentier_(Entreprise)
+    (Cover_Letter_... pour une lettre en anglais, plus naturel pour le recruteur)."""
     personne = stockage.slugifier_nom_fichier(nom_personne, longueur_max=40).replace(" ", "_") or "Candidat"
     entreprise_slug = stockage.slugifier_nom_fichier(entreprise) or "Entreprise"
-    return f"Lettre_Motivation_{personne}_({entreprise_slug})", f"CV_{personne}_({entreprise_slug})"
+    prefixe = "Cover_Letter" if langue == "en" else "Lettre_Motivation"
+    return f"{prefixe}_{personne}_({entreprise_slug})", f"CV_{personne}_({entreprise_slug})"
 
 
 def produire_candidature(
@@ -71,11 +73,11 @@ def produire_candidature(
     étape, depuis le fil d'exécution de l'appelant uniquement."""
     signaler = progression or (lambda _message: None)
     cv_reference = cv_reference or stockage.FICHIER_CV
-    nom_lettre, nom_cv = noms_fichiers(profil.get("nom", ""), resultat.entreprise)
+    nom_lettre, nom_cv = noms_fichiers(profil.get("nom", ""), resultat.entreprise, getattr(resultat, "langue", "fr"))
     chemin_lettre = dossier / f"{nom_lettre}.docx"
     chemin_cv = dossier / f"{nom_cv}.docx"
 
-    signaler("📄 Création des fichiers Word (lettre et CV adapté)...")
+    signaler(":material/description: Création des fichiers Word (lettre et CV adapté)")
     generer_lettre(resultat=resultat, profil=profil, entreprise_adresse=entreprise_adresse,
                    chemin_sortie=chemin_lettre)
     rapport = appliquer_adaptations(cv_reference, chemin_cv, resultat.cv_adaptations)
@@ -98,8 +100,8 @@ def produire_candidature(
 
     if en_parallele is None:
         en_parallele = convertir is not convertir_en_pdf or pdf_export.conversion_parallele_possible()
-    signaler("🖨️ Conversion en PDF et mise en page sur une page"
-             + (" (lettre et CV en parallèle)..." if en_parallele else "..."))
+    signaler(":material/picture_as_pdf: Conversion en PDF et mise en page sur une page"
+             + (" (lettre et CV en parallèle)" if en_parallele else ""))
     if en_parallele:
         with ThreadPoolExecutor(max_workers=2) as pool:
             futurs = {"lettre": pool.submit(faire_lettre), "cv": pool.submit(faire_cv)}

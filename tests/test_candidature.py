@@ -24,6 +24,10 @@ def test_noms_de_fichiers():
     )
 
 
+def test_nom_de_la_lettre_en_anglais():
+    assert noms_fichiers("Owen Charpentier", "Exemple SA", "en")[0] == "Cover_Letter_Owen_Charpentier_(Exemple SA)"
+
+
 def test_production_complete(projet_temporaire, cv_exemple: Path, tmp_path: Path):
     def convertir(chemin_docx: Path):
         return faire_pdf(chemin_docx.with_suffix(".pdf"), [500]), "factice"

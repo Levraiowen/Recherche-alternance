@@ -11,22 +11,24 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
+from urllib.parse import urlsplit
 
 import stockage
 
-# Clé enregistrée -> (libellé, emoji, couleur de badge Streamlit)
+# Clé enregistrée -> (libellé, icône Material, couleur de badge Streamlit)
 STATUTS: dict[str, tuple[str, str, str]] = {
-    "": ("Générée", "📝", "gray"),
-    "envoyee": ("Envoyée", "📤", "blue"),
-    "relancee": ("Relancée", "🔔", "orange"),
-    "entretien": ("Entretien", "🎤", "violet"),
-    "acceptee": ("Acceptée", "✅", "green"),
-    "refusee": ("Refusée", "❌", "red"),
-    "abandonnee": ("Pas envoyée", "🚫", "gray"),
+    "": ("Générée", "draft", "gray"),
+    "envoyee": ("Envoyée", "send", "blue"),
+    "relancee": ("Relancée", "notifications_active", "orange"),
+    "entretien": ("Entretien", "forum", "violet"),
+    "acceptee": ("Acceptée", "check_circle", "green"),
+    "refusee": ("Refusée", "cancel", "red"),
+    "abandonnee": ("Pas envoyée", "block", "gray"),
 }
 STATUTS_ENVOYES = ("envoyee", "relancee", "entretien", "acceptee", "refusee")
 STATUTS_REPONSE = ("entretien", "acceptee", "refusee")
@@ -40,14 +42,18 @@ def statut(entree: dict[str, Any]) -> str:
 
 
 def libelle(cle: str) -> str:
-    nom, emoji, _ = STATUTS.get(cle, STATUTS[""])
-    return f"{emoji} {nom}"
+    return STATUTS.get(cle, STATUTS[""])[0]
+
+
+def icone(cle: str) -> str:
+    """Icône Material du statut, ex: :material/send:."""
+    return f":material/{STATUTS.get(cle, STATUTS[''])[1]}:"
 
 
 def badge(cle: str) -> str:
-    """Badge coloré en markdown Streamlit, ex: :blue-badge[📤 Envoyée]."""
-    nom, emoji, couleur = STATUTS.get(cle, STATUTS[""])
-    return f":{couleur}-badge[{emoji} {nom}]"
+    """Badge coloré en markdown Streamlit, ex: :blue-badge[:material/send: Envoyée]."""
+    nom, _, couleur = STATUTS.get(cle, STATUTS[""])
+    return f":{couleur}-badge[{icone(cle)} {nom}]"
 
 
 def _date(valeur: Any) -> date | None:
@@ -76,7 +82,48 @@ def changer_statut(identifiant: str, nouveau: str, *, le: date | None = None) ->
         modifications["date_envoi"] = jour
     if nouveau == "relancee":
         modifications["date_relance"] = jour
+    if nouveau in STATUTS_REPONSE and not entree.get("date_reponse"):
+        modifications["date_reponse"] = jour  # pour mesurer le délai de réponse des recruteurs
     stockage.mettre_a_jour_historique(identifiant, modifications)
+
+
+def delai_reponse(entree: dict[str, Any]) -> int | None:
+    """Jours entre l'envoi et la première réponse (si les deux dates sont connues)."""
+    envoi, reponse = date_envoi(entree), _date(entree.get("date_reponse"))
+    return (reponse - envoi).days if envoi and reponse and reponse >= envoi else None
+
+
+# Site d'emploi d'où vient l'offre, d'après son lien.
+SOURCES = (
+    ("welcometothejungle", "Welcome to the Jungle"),
+    ("indeed.", "Indeed"),
+    ("linkedin.", "LinkedIn"),
+    ("hellowork.", "HelloWork"),
+    ("francetravail.", "France Travail"),
+    ("pole-emploi.", "France Travail"),
+    ("labonnealternance", "La bonne alternance"),
+    ("1jeune1solution", "1jeune1solution"),
+    ("jobteaser.", "JobTeaser"),
+    ("apec.", "Apec"),
+    ("monster.", "Monster"),
+    ("glassdoor.", "Glassdoor"),
+    ("meteojob.", "Meteojob"),
+    ("letudiant.", "L'Étudiant"),
+    ("studentjob.", "StudentJob"),
+)
+
+
+def source_offre(entree: dict[str, Any]) -> str:
+    """« LinkedIn », « Indeed »... ; le nom du site pour un autre lien ;
+    « Non renseignée » sans lien."""
+    url = (entree.get("url_offre") or "").strip()
+    hote = (urlsplit(url if "://" in url else "https://" + url).hostname or "") if url else ""
+    if not hote:
+        return "Non renseignée"
+    for motif, nom in SOURCES:
+        if motif in hote:
+            return nom
+    return re.sub(r"^(www|jobs|careers|carrieres|recrutement)\.", "", hote)
 
 
 @dataclass

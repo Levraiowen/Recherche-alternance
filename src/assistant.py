@@ -74,11 +74,16 @@ class Mail:
     corps: str
 
 
+def _consigne_langue(langue: str, quoi: str) -> str:
+    return f"\nRédige {quoi} en ANGLAIS (la candidature a été envoyée en anglais).\n" if langue == "en" else ""
+
+
 def rediger_relance(
-    *, entreprise: str, poste: str, jours: int, deuxieme: bool, contexte: str, profil: dict[str, Any]
+    *, entreprise: str, poste: str, jours: int, deuxieme: bool, contexte: str, profil: dict[str, Any],
+    langue: str = "fr",
 ) -> Mail:
     message = f"""Rédige un court e-mail de {'deuxième ' if deuxieme else ''}relance (70 à 120 mots) \
-pour une candidature en alternance restée sans réponse.
+pour une candidature en alternance restée sans réponse.{_consigne_langue(langue, "l'objet et le corps de l'e-mail")}
 
 Entreprise : {entreprise or 'non précisée'}
 Poste : {poste or 'non précisé'}
@@ -146,23 +151,35 @@ class FicheEntretien:
 
     def en_markdown(self, titre: str) -> str:
         sur = texte_ia_sur  # chaque texte venant de l'IA est neutralisé ; la structure reste la nôtre
-        lignes = [f"## {echapper_markdown(titre)}", "", "### 🗣️ Présentation en 30 secondes", "", sur(self.pitch), ""]
+        # Affichée dans la fiche de la candidature (page Mes candidatures),
+        # sous le nom de l'entreprise : titres de taille modeste.
+        lignes = [f"#### {echapper_markdown(titre)}", "",
+                  "##### :material/record_voice_over: Présentation en 30 secondes", "", sur(self.pitch), ""]
         if self.a_savoir:
-            lignes += ["### 🏢 À savoir sur l'entreprise et le poste", ""]
+            lignes += ["##### :material/apartment: À savoir sur l'entreprise et le poste", ""]
             lignes += [f"- {sur(x)}" for x in self.a_savoir] + [""]
         if self.questions:
-            lignes += ["### ❓ Questions probables et pistes de réponse", ""]
+            lignes += ["##### :material/quiz: Questions probables et pistes de réponse", ""]
             for question, piste in self.questions:
                 lignes += [f"**{sur(question)}**", "", f"> {sur(piste)}", ""]
         if self.a_mettre_en_avant:
-            lignes += ["### ⭐ À mettre en avant", ""] + [f"- {sur(x)}" for x in self.a_mettre_en_avant] + [""]
+            lignes += ["##### :material/star: À mettre en avant", ""]
+            lignes += [f"- {sur(x)}" for x in self.a_mettre_en_avant] + [""]
         if self.questions_a_poser:
-            lignes += ["### 🙋 Questions à poser au recruteur", ""] + [f"- {sur(x)}" for x in self.questions_a_poser]
+            lignes += ["##### :material/contact_support: Questions à poser au recruteur", ""]
+            lignes += [f"- {sur(x)}" for x in self.questions_a_poser]
         return "\n".join(lignes)
 
 
-def preparer_entretien(*, entreprise: str, poste: str, contexte: str, cv_texte: str) -> FicheEntretien:
-    message = f"""Prépare le candidat à un entretien pour cette alternance.
+def preparer_entretien(
+    *, entreprise: str, poste: str, contexte: str, cv_texte: str, langue: str = "fr"
+) -> FicheEntretien:
+    langue_fiche = (
+        "\nLa candidature a été envoyée en anglais : l'entretien se fera probablement en anglais. Rédige "
+        "le pitch, les questions probables et leurs pistes de réponse, et les questions à poser EN ANGLAIS ; "
+        "le reste en français.\n" if langue == "en" else ""
+    )
+    message = f"""Prépare le candidat à un entretien pour cette alternance.{langue_fiche}
 
 Entreprise : {entreprise or 'non précisée'}
 Poste : {poste or 'non précisé'}
@@ -244,7 +261,7 @@ SCHEMA_PARAGRAPHE = {
 
 
 def reecrire_paragraphe(
-    *, paragraphes: list[str], index: int, annonce: str, cv_texte: str, consigne: str = ""
+    *, paragraphes: list[str], index: int, annonce: str, cv_texte: str, consigne: str = "", langue: str = "fr"
 ) -> str:
     if not 0 <= index < len(paragraphes):
         raise ErreurGeneration("Paragraphe introuvable.")
@@ -256,7 +273,7 @@ def reecrire_paragraphe(
     message = f"""Réécris UNIQUEMENT le paragraphe {index + 1} de cette lettre de motivation, \
 en gardant le même rôle dans la lettre et une longueur proche (sauf consigne \
 contraire), sans répéter ce que disent les autres paragraphes.
-{instruction}
+{instruction}{_consigne_langue(langue, "le paragraphe")}
 
 Lettre actuelle :
 ---

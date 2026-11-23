@@ -39,8 +39,8 @@ def test_relances_et_statistiques():
 
 
 def test_badges():
-    assert suivi.badge("envoyee") == ":blue-badge[📤 Envoyée]"
-    assert suivi.libelle("inconnu") == "📝 Générée"
+    assert suivi.badge("envoyee") == ":blue-badge[:material/send: Envoyée]"
+    assert suivi.libelle("inconnu") == "Générée"
 
 
 def test_export_csv_pour_tableur():
@@ -60,3 +60,16 @@ def test_export_csv_pour_tableur():
     assert lignes[1][2] == "Data; BI" and lignes[1][3] == "Envoyée" and lignes[1][6] == "80"
     assert lignes[1][10] == "Ligne 1\nLigne 2"
     assert lignes[2][2] == "'-Analyste" and lignes[2][3] == "Générée"
+
+
+def test_date_de_reponse_et_source(projet_temporaire):
+    stockage.ajouter_historique({"id": "r1", "date": "2026-11-02T10:00:00", "url_offre": "https://fr.indeed.com/x"})
+    suivi.changer_statut("r1", "envoyee", le=date(2026, 11, 3))
+    suivi.changer_statut("r1", "entretien", le=date(2026, 11, 10))
+    suivi.changer_statut("r1", "acceptee", le=date(2026, 11, 20))  # la 1re réponse compte
+    entree = stockage.charger_historique()[0]
+    assert entree["date_reponse"] == "2026-11-10" and suivi.delai_reponse(entree) == 7
+    assert suivi.source_offre(entree) == "Indeed"
+    assert suivi.source_offre({"url_offre": "https://careers.exemple-energie.fr/offre/12"}) == "exemple-energie.fr"
+    assert suivi.source_offre({"url_offre": "www.welcometothejungle.com/fr/jobs/x"}) == "Welcome to the Jungle"
+    assert suivi.source_offre({}) == "Non renseignée"
