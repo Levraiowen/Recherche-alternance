@@ -40,6 +40,27 @@ def cle_api_presente() -> bool:
     return bool(os.environ.get("GEMINI_API_KEY", "").strip())
 
 
+def _module_fournisseur():
+    fournisseur = fournisseur_actif()
+    if fournisseur == "gemini":
+        import ia_gemini
+
+        return ia_gemini
+    if fournisseur == "anthropic":
+        import ia_anthropic
+
+        return ia_anthropic
+    raise ErreurGeneration(
+        f"FOURNISSEUR_IA={fournisseur!r} inconnu dans .env "
+        f"(valeurs acceptées : {', '.join(FOURNISSEURS_CONNUS)})."
+    )
+
+
+def generer_json(*, systeme: str, message: str, schema: dict) -> tuple[dict, str]:
+    """Appel générique au fournisseur actif : (objet JSON, modèle utilisé)."""
+    return _module_fournisseur().generer_json(systeme=systeme, message=message, schema=schema)
+
+
 def generer_candidature(
     *,
     blocs_cv: list[BlocTexte],
@@ -49,19 +70,7 @@ def generer_candidature(
     poste_indique: str = "",
     consignes_supplementaires: str = "",
 ) -> ResultatGeneration:
-    fournisseur = fournisseur_actif()
-
-    if fournisseur == "gemini":
-        import ia_gemini as module_fournisseur
-    elif fournisseur == "anthropic":
-        import ia_anthropic as module_fournisseur
-    else:
-        raise ErreurGeneration(
-            f"FOURNISSEUR_IA={fournisseur!r} inconnu dans .env "
-            f"(valeurs acceptées : {', '.join(FOURNISSEURS_CONNUS)})."
-        )
-
-    return module_fournisseur.generer_candidature(
+    return _module_fournisseur().generer_candidature(
         blocs_cv=blocs_cv,
         texte_annonce=texte_annonce,
         contexte_academique=contexte_academique,

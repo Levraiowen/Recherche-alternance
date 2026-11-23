@@ -4,6 +4,7 @@
 # Données personnelles (CV, profil, historique, lettres/CV générés)
 data/
 outputs/
+sauvegardes/
 
 # Python
 .venv/

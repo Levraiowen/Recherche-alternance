@@ -115,18 +115,15 @@ def cv_exemple(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def projet_temporaire(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Redirige tous les chemins de stockage vers un dossier temporaire."""
+    """Redirige TOUS les chemins de stockage (data/, outputs/, sauvegardes/...)
+    vers un dossier temporaire : les tests ne touchent jamais aux vraies données."""
     import stockage
 
+    racine_reelle = stockage.RACINE
     racine = tmp_path / "projet"
-    data = racine / "data"
-    monkeypatch.setattr(stockage, "RACINE", racine)
-    monkeypatch.setattr(stockage, "DOSSIER_DATA", data)
-    monkeypatch.setattr(stockage, "DOSSIER_OUTPUTS", racine / "outputs")
-    monkeypatch.setattr(stockage, "FICHIER_PROFIL", data / "profil.json")
-    monkeypatch.setattr(stockage, "FICHIER_HISTORIQUE", data / "historique.json")
-    monkeypatch.setattr(stockage, "FICHIER_CV", data / "cv_original.docx")
-    monkeypatch.setattr(stockage, "FICHIER_MISE_EN_PAGE", data / "mise_en_page.json")
+    for nom, valeur in list(vars(stockage).items()):
+        if isinstance(valeur, Path) and valeur.is_relative_to(racine_reelle):
+            monkeypatch.setattr(stockage, nom, racine / valeur.relative_to(racine_reelle))
     return racine
 
 

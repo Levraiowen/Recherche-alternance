@@ -26,16 +26,7 @@ from ia_commun import (
 )
 
 MODELE_PAR_DEFAUT = "claude-sonnet-5-5"
-NOM_OUTIL = "generer_candidature"
-
-SCHEMA_OUTIL = {
-    "name": NOM_OUTIL,
-    "description": (
-        "Produit le contenu d'une candidature (lettre de motivation + "
-        "adaptations du CV) pour une offre d'emploi donnée."
-    ),
-    "input_schema": SCHEMA_CANDIDATURE,
-}
+NOM_OUTIL = "repondre"
 
 
 def _message_erreur(exc: Exception) -> str:
@@ -64,46 +55,32 @@ def _message_erreur(exc: Exception) -> str:
     return f"Erreur inattendue lors de l'appel à Anthropic : {exc}"
 
 
-def generer_candidature(
-    *,
-    blocs_cv: list[BlocTexte],
-    texte_annonce: str,
-    contexte_academique: str,
-    entreprise_indiquee: str = "",
-    poste_indique: str = "",
-    consignes_supplementaires: str = "",
-) -> ResultatGeneration:
-    valider_entrees(texte_annonce, blocs_cv)
+def generer_json(*, systeme: str, message: str, schema: dict) -> tuple[dict, str]:
+    """Appel générique : renvoie (objet JSON conforme à `schema`, modèle utilisé).
 
+    L'outil est imposé (tool_choice) : la réponse arrive directement sous
+    forme d'objet JSON conforme au schéma, sans texte autour."""
     cle = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not cle:
         raise ErreurGeneration(
             "Aucune clé API Anthropic configurée. Ajoute ANTHROPIC_API_KEY "
             "dans le fichier .env (voir .env.example) puis relance l'app."
         )
-
-    message = construire_message_utilisateur(
-        blocs_cv=blocs_cv,
-        texte_annonce=texte_annonce,
-        contexte_academique=contexte_academique,
-        entreprise_indiquee=entreprise_indiquee,
-        poste_indique=poste_indique,
-        consignes_supplementaires=consignes_supplementaires,
-    )
-
     modele = os.environ.get("ANTHROPIC_MODEL", MODELE_PAR_DEFAUT).strip() or MODELE_PAR_DEFAUT
-
+    outil = {
+        "name": NOM_OUTIL,
+        "description": "Renvoie le résultat demandé, structuré selon le schéma.",
+        "input_schema": schema,
+    }
     try:
         from anthropic import Anthropic
 
         client = Anthropic(api_key=cle, max_retries=2)
-        # Outil imposé (tool_choice) : la réponse arrive directement sous
-        # forme d'objet JSON conforme au schéma, sans texte autour.
         reponse = client.messages.create(
             model=modele,
             max_tokens=8000,
-            system=SYSTEME,
-            tools=[SCHEMA_OUTIL],
+            system=systeme,
+            tools=[outil],
             tool_choice={"type": "tool", "name": NOM_OUTIL},
             messages=[{"role": "user", "content": message}],
         )
@@ -116,9 +93,28 @@ def generer_candidature(
         raise ErreurGeneration(_message_erreur(exc)) from exc
 
     bloc_outil = next((b for b in reponse.content if getattr(b, "type", None) == "tool_use"), None)
-    if bloc_outil is None:
+    if bloc_outil is None or not isinstance(bloc_outil.input, dict):
         raise ErreurGeneration("Réponse inattendue de l'IA (aucun résultat structuré reçu).")
+    return bloc_outil.input, getattr(reponse, "model", modele)
 
-    return construire_resultat(
-        bloc_outil.input, entreprise_indiquee, poste_indique, modele=getattr(reponse, "model", modele)
+
+def generer_candidature(
+    *,
+    blocs_cv: list[BlocTexte],
+    texte_annonce: str,
+    contexte_academique: str,
+    entreprise_indiquee: str = "",
+    poste_indique: str = "",
+    consignes_supplementaires: str = "",
+) -> ResultatGeneration:
+    valider_entrees(texte_annonce, blocs_cv)
+    message = construire_message_utilisateur(
+        blocs_cv=blocs_cv,
+        texte_annonce=texte_annonce,
+        contexte_academique=contexte_academique,
+        entreprise_indiquee=entreprise_indiquee,
+        poste_indique=poste_indique,
+        consignes_supplementaires=consignes_supplementaires,
     )
+    donnees, modele = generer_json(systeme=SYSTEME, message=message, schema=SCHEMA_CANDIDATURE)
+    return construire_resultat(donnees, entreprise_indiquee, poste_indique, modele=modele)

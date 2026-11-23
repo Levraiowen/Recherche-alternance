@@ -30,7 +30,9 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
+import threading
 from pathlib import Path
 from typing import Callable
 
@@ -67,6 +69,14 @@ def _word_disponible() -> bool:
         return False
 
 
+# Word ne se pilote que depuis un fil d'exécution à la fois.
+VERROU_WORD = threading.Lock()
+
+
+def _sous_windows() -> bool:
+    return sys.platform == "win32"
+
+
 def _via_word(chemin_docx: Path, chemin_pdf: Path) -> None:
     if not _word_disponible():
         raise ErreurConversionPDF(
@@ -77,7 +87,21 @@ def _via_word(chemin_docx: Path, chemin_pdf: Path) -> None:
 
     from docx2pdf import convert  # dépendance optionnelle (Windows/Mac + Word installé)
 
-    convert(str(chemin_docx), str(chemin_pdf))
+    with VERROU_WORD:
+        if not _sous_windows():
+            convert(str(chemin_docx), str(chemin_pdf))
+            return
+        # Streamlit exécute chaque affichage dans un nouveau fil : COM doit y
+        # être initialisé explicitement, sinon seule la toute première
+        # conversion de la session fonctionne (« CoInitialize has not been
+        # called » ensuite).
+        import pythoncom  # fourni par pywin32, dépendance de docx2pdf sous Windows
+
+        pythoncom.CoInitialize()
+        try:
+            convert(str(chemin_docx), str(chemin_pdf))
+        finally:
+            pythoncom.CoUninitialize()
 
 
 def _trouver_soffice() -> str | None:
@@ -299,6 +323,20 @@ _METHODES: tuple[tuple[str, Callable[[Path, Path], None]], ...] = (
 # Méthode ayant fonctionné en dernier (pendant que l'app tourne) : essayée en
 # premier la fois suivante.
 _methode_preferee: str | None = None
+
+
+def methode_preferee() -> str | None:
+    """Méthode de conversion qui a fonctionné en dernier (None au démarrage)."""
+    return _methode_preferee
+
+
+def conversion_parallele_possible() -> bool:
+    """Deux conversions simultanées sont sûres avec LibreOffice (profils
+    séparés) et iLovePDF, mais pas avec Word piloté par COM depuis plusieurs
+    fils d'exécution."""
+    if _methode_preferee in (METHODE_LIBREOFFICE, METHODE_ILOVEPDF):
+        return True
+    return _methode_preferee is None and not _word_disponible()
 
 
 def convertir_en_pdf(chemin_docx: Path) -> tuple[Path, str]:

@@ -5,9 +5,20 @@
 # d'utilisation envoyées à Streamlit.
 gatherUsageStats = false
 
-[theme]
-primaryColor = "#1F3864"
+[server]
+# Écoute uniquement sur ce PC : sans ce réglage, Streamlit accepte aussi les
+# connexions venant du réseau (Wi-Fi de l'école, d'un café...), et n'importe
+# qui sur le même réseau pourrait ouvrir l'app, voir ton CV et utiliser ta clé
+# d'IA. Le navigateur s'ouvre sur http://127.0.0.1:8501 (ou localhost:8501).
+address = "127.0.0.1"
 
 [client]
-# App personnelle locale : on masque le bouton « Deploy » et le menu développeur.
-toolbarMode = "minimal"
+# Masque les options de développeur (bouton « Deploy »...) mais garde le menu
+# ⋮ > Settings, qui permet de passer en thème clair ou sombre.
+toolbarMode = "viewer"
+
+[theme.light]
+primaryColor = "#1F3864"
+
+[theme.dark]
+primaryColor = "#7AA2F7"

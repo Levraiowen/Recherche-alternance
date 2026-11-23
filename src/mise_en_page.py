@@ -25,6 +25,7 @@ from __future__ import annotations
 import copy
 import io
 import math
+import threading
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -494,7 +495,19 @@ class MesurePDF:
         return max(0.0, self.hauteur_page - self.marge_bas - self.bas_contenu_par_page[0])
 
 
+# PDFium (la bibliothèque qui lit les PDF) n'accepte pas d'être utilisée
+# par deux fils d'exécution en même temps, même sur des fichiers différents :
+# tout accès passe par ce verrou (le CV et la lettre sont traités en
+# parallèle, et l'interface affiche des aperçus).
+VERROU_PDFIUM = threading.Lock()
+
+
 def mesurer_pdf(chemin_pdf: Path, marge_haut: float, marge_bas: float) -> MesurePDF:
+    with VERROU_PDFIUM:
+        return _mesurer_pdf(chemin_pdf, marge_haut, marge_bas)
+
+
+def _mesurer_pdf(chemin_pdf: Path, marge_haut: float, marge_bas: float) -> MesurePDF:
     import pypdfium2 as pdfium
 
     document = pdfium.PdfDocument(str(chemin_pdf))

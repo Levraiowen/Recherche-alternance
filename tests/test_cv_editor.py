@@ -78,3 +78,38 @@ def test_cv_de_reference_jamais_modifie(cv_exemple: Path, tmp_path: Path):
     ids = _blocs_par_texte(cv_exemple)
     appliquer_adaptations(cv_exemple, tmp_path / "cv.docx", {ids["Outils : Excel, Power BI, Git"]: "Outils : Excel"})
     assert cv_exemple.read_bytes() == avant
+
+
+def test_contenus_word_speciaux_jamais_reecrits(tmp_path):
+    """Modifications suivies, contrôles de contenu (modèles de CV Word) : leur
+    texte serait perdu ou dupliqué par une réécriture, ils sont donc protégés."""
+    from docx import Document as NouveauDocument
+    from docx.oxml import parse_xml
+
+    w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    document = NouveauDocument()
+    corps = document.element.body
+    corps.insert(0, parse_xml(
+        f'<w:p {w}><w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">Outils : </w:t></w:r>'
+        f'<w:sdt><w:sdtContent><w:r><w:t>Excel, Power BI, Python</w:t></w:r></w:sdtContent></w:sdt></w:p>'))
+    corps.insert(1, parse_xml(
+        f'<w:p {w}><w:r><w:t xml:space="preserve">Stage data analyst chez </w:t></w:r>'
+        f'<w:ins w:id="1" w:author="moi" w:date="2026-01-01T00:00:00Z"><w:r><w:t>Exemple SA</w:t></w:r></w:ins>'
+        f'<w:r><w:t xml:space="preserve"> (Lyon), tableaux de bord</w:t></w:r></w:p>'))
+    corps.insert(2, parse_xml(
+        f'<w:p {w}><w:r><w:t xml:space="preserve">Jean</w:t><w:noBreakHyphen/><w:t xml:space="preserve">Pierre '
+        f'a animé des ateliers de formation</w:t></w:r></w:p>'))
+    source = tmp_path / "cv.docx"
+    document.save(str(source))
+
+    blocs = {b.id: b for b in extraire_blocs(source)}
+    assert not blocs["p0"].modifiable and not blocs["p1"].modifiable
+    assert blocs["p2"].modifiable  # un trait d'union insécable n'empêche pas l'adaptation
+    rapport = appliquer_adaptations(source, tmp_path / "sortie.docx", {
+        "p0": "Outils : Power BI, Excel", "p1": "Stage data analyst (Lyon), reporting Power BI"})
+    assert set(rapport.ignores) == {"p0", "p1"} and not rapport.appliques
+    from docx.oxml.ns import qn
+
+    sortie = Document(str(tmp_path / "sortie.docx"))
+    textes = [" ".join(t.text for t in p._p.iter(qn("w:t"))) for p in sortie.paragraphs]
+    assert "Exemple SA" in textes[1] and "Excel, Power BI, Python" in textes[0]

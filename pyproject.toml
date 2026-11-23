@@ -21,6 +21,7 @@ select = ["E", "F", "W", "B", "I"]
 
 [tool.ruff.lint.isort]
 known-first-party = [
-    "ai_client", "candidature", "cv_editor", "ia_anthropic", "ia_commun", "ia_gemini",
-    "lettre_generator", "mise_en_page", "pdf_export", "stockage", "version", "conftest",
+    "ai_client", "assistant", "candidature", "cv_editor", "ia_anthropic", "ia_commun", "ia_gemini",
+    "import_offre", "lettre_generator", "mise_en_page", "pdf_export", "stockage", "suivi", "version",
+    "conftest", "test_app",
 ]

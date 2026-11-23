@@ -1,5 +1,6 @@
 """
-Génération de la candidature via l'API Gemini (Google), palier gratuit.
+Appels à l'API Gemini (Google), palier gratuit : génération de la candidature
+et des textes de l'assistant (relance, préparation d'entretien...).
 
 Clé gratuite à obtenir sur https://aistudio.google.com/apikey (aucune carte
 bancaire requise, indépendant d'un éventuel abonnement Gemini Advanced payant).
@@ -170,17 +171,9 @@ def _message_erreur(exc: Exception, modeles_essayes: list[str] | None = None) ->
     return f"Erreur inattendue lors de l'appel à Gemini : {exc}"
 
 
-def generer_candidature(
-    *,
-    blocs_cv: list[BlocTexte],
-    texte_annonce: str,
-    contexte_academique: str,
-    entreprise_indiquee: str = "",
-    poste_indique: str = "",
-    consignes_supplementaires: str = "",
-) -> ResultatGeneration:
-    valider_entrees(texte_annonce, blocs_cv)
-
+def generer_json(*, systeme: str, message: str, schema: dict) -> tuple[dict, str]:
+    """Appel générique : renvoie (objet JSON conforme à `schema`, modèle utilisé).
+    Gère la clé, la bascule entre modèles et les messages d'erreur clairs."""
     cle = os.environ.get("GEMINI_API_KEY", "").strip()
     if not cle:
         raise ErreurGeneration(
@@ -188,15 +181,6 @@ def generer_candidature(
             "https://aistudio.google.com/apikey, ajoute GEMINI_API_KEY dans "
             "le fichier .env (voir .env.example) puis relance l'app."
         )
-
-    message = construire_message_utilisateur(
-        blocs_cv=blocs_cv,
-        texte_annonce=texte_annonce,
-        contexte_academique=contexte_academique,
-        entreprise_indiquee=entreprise_indiquee,
-        poste_indique=poste_indique,
-        consignes_supplementaires=consignes_supplementaires,
-    )
 
     modele_demande = os.environ.get("GEMINI_MODEL", MODELE_PAR_DEFAUT).strip() or MODELE_PAR_DEFAUT
     modeles_a_essayer = _resoudre_modeles_a_essayer(modele_demande)
@@ -216,9 +200,9 @@ def generer_candidature(
             modeles=modeles_a_essayer,
             contenu=message,
             config={
-                "system_instruction": SYSTEME,
+                "system_instruction": systeme,
                 "response_mime_type": "application/json",
-                "response_json_schema": SCHEMA_CANDIDATURE,
+                "response_json_schema": schema,
             },
         )
     except ErreurGeneration:
@@ -236,12 +220,32 @@ def generer_candidature(
         raise ErreurGeneration(
             "Réponse vide reçue de l'API Gemini"
             + (f" (motif : {raison})" if raison else "")
-            + ". Réessaie la génération ; si ça se reproduit, raccourcis l'annonce collée."
+            + ". Réessaie ; si ça se reproduit, raccourcis le texte envoyé."
         )
 
     try:
-        donnees = extraire_json(texte_reponse)
+        return extraire_json(texte_reponse), modele_utilise
     except ValueError as exc:
         raise ErreurGeneration(f"Réponse Gemini non JSON valide : {exc}") from exc
 
+
+def generer_candidature(
+    *,
+    blocs_cv: list[BlocTexte],
+    texte_annonce: str,
+    contexte_academique: str,
+    entreprise_indiquee: str = "",
+    poste_indique: str = "",
+    consignes_supplementaires: str = "",
+) -> ResultatGeneration:
+    valider_entrees(texte_annonce, blocs_cv)
+    message = construire_message_utilisateur(
+        blocs_cv=blocs_cv,
+        texte_annonce=texte_annonce,
+        contexte_academique=contexte_academique,
+        entreprise_indiquee=entreprise_indiquee,
+        poste_indique=poste_indique,
+        consignes_supplementaires=consignes_supplementaires,
+    )
+    donnees, modele_utilise = generer_json(systeme=SYSTEME, message=message, schema=SCHEMA_CANDIDATURE)
     return construire_resultat(donnees, entreprise_indiquee, poste_indique, modele=modele_utilise)

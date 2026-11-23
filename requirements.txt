@@ -7,6 +7,10 @@ python-docx>=1.1
 docxtpl>=0.18
 lxml>=4.9
 
+# Import d'une offre à partir de son lien (lecture de la page web)
+requests>=2.31
+beautifulsoup4>=4.12
+
 # Lecture des PDF générés (nombre de pages, mesure du débordement, aperçus).
 # Roues précompilées pour Windows, Mac et Linux : rien d'autre à installer.
 pypdfium2>=4.20

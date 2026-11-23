@@ -5,8 +5,10 @@
 App locale (Streamlit) pour préparer en une minute une candidature
 personnalisée à partir d'une offre d'alternance :
 
-1. Tu importes ton CV Word une fois (il reste enregistré en local).
-2. Tu colles le texte d'une offre.
+1. Tu importes ton CV Word une fois (il reste enregistré en local) — ou
+   plusieurs, par exemple un CV « Data » et un CV « Marketing ».
+2. Tu colles le **lien** de l'offre (l'app récupère le texte, l'entreprise,
+   le poste et l'adresse) ou directement son texte.
 3. L'app génère, en **PDF prêt à envoyer, chacun sur une seule page** (le
    .docx est aussi gardé) :
    - une **lettre de motivation** au format A4, nommée
@@ -14,9 +16,16 @@ personnalisée à partir d'une offre d'alternance :
    - une **version adaptée de ton CV**, nommée `CV_Prénom_Nom_(Entreprise).pdf`,
      avec quelques formulations ajustées pour coller à l'offre — même mise
      en page, même fichier d'origine, mise en forme conservée (libellés en
-     gras, dates en italique...).
-4. Tu relis (aperçu intégré), tu retouches si besoin directement dans l'app,
-   tu télécharges, tu envoies.
+     gras, dates en italique...) ;
+   - un **e-mail d'accompagnement** prêt à copier ou à ouvrir dans ta
+     messagerie, et une **analyse de l'offre** (correspondance estimée, tes
+     atouts, ce que l'offre demande et que ton CV ne montre pas).
+4. Tu relis (aperçu intégré), tu retouches si besoin directement dans l'app
+   (un paragraphe peut être reformulé par l'IA d'un clic), tu télécharges,
+   tu envoies.
+5. **Facultatif** : tu notes ce que tu as envoyé, et l'app te rappelle quand
+   relancer (et rédige la relance), suit tes réponses et prépare tes
+   entretiens. Rien de tout ça n'est obligatoire.
 
 ![Aperçu de l'application](docs/apercu.png)
 
@@ -24,8 +33,10 @@ personnalisée à partir d'une offre d'alternance :
 
 - **Intégration d'une API IA** (Google Gemini, sortie JSON structurée par
   schéma) avec bascule automatique entre plusieurs modèles quand l'un
-  atteint son quota ou est retiré, et fournisseur alternatif (Claude)
-  interchangeable sans toucher au reste du code.
+  atteint son quota, est surchargé ou est retiré, et fournisseur alternatif
+  (Claude) interchangeable sans toucher au reste du code. Le texte de
+  l'annonce est traité comme une donnée : les consignes qu'il pourrait
+  contenir sont ignorées (protection contre l'injection de prompt).
 - **Mise en page garantie sur une page** : le PDF réellement produit est
   analysé (nombre de pages, hauteur du contenu qui déborde) et le document
   est resserré juste ce qu'il faut — espacements, interligne, marges, puis
@@ -39,13 +50,20 @@ personnalisée à partir d'une offre d'alternance :
   Word via COM → LibreOffice en ligne de commande → service cloud), avec
   détection des pannes plutôt que des blocages silencieux (délai borné,
   nettoyage de l'arbre de processus, diagnostic clair).
+- **Import d'une offre depuis son lien**, sécurisé : lecture des données
+  structurées `JobPosting` (schema.org) publiées par les sites d'emploi,
+  repli sur le texte principal de la page, et protections contre les
+  requêtes vers le réseau local (adresses privées refusées, redirections
+  vérifiées une à une, taille et durée bornées).
 - **Robustesse et données** : écritures JSON atomiques, récupération après
-  corruption, dossiers de sortie isolés par génération, historique
-  consultable avec détection des candidatures en double.
-- **Qualité logicielle** : 39 tests automatisés (pytest, dont un test de
-  l'interface Streamlit de bout en bout et un test d'intégration avec un
-  vrai moteur de rendu), analyse statique (ruff), intégration continue
-  GitHub Actions.
+  corruption, dossiers de sortie isolés par génération, sauvegarde
+  automatique quotidienne et restauration contrôlée (seuls les fichiers de
+  l'app sont acceptés), historique avec détection des candidatures en double
+  et suivi facultatif (statuts, relances, statistiques).
+- **Qualité logicielle** : 78 tests automatisés (pytest, dont des
+  tests de l'interface Streamlit de bout en bout et un test d'intégration
+  avec un vrai moteur de rendu), analyse statique (ruff), intégration
+  continue GitHub Actions.
 - **Déploiement pour un utilisateur non technique** : lanceur Windows qui
   crée l'environnement et installe/met à jour les dépendances tout seul,
   raccourci avec icône épinglable à la barre des tâches, fermeture propre
@@ -117,6 +135,7 @@ défaut, et environ 0,2 centime avec `ANTHROPIC_MODEL=claude-haiku-5-5`).
 Une petite fenêtre noire reste ouverte pendant que l'app tourne : elle
 affiche les éventuelles erreurs. Pour arrêter l'app, utilise le bouton
 **🛑 Fermer l'app** en haut de la page (ou ferme la fenêtre noire).
+Thème clair ou sombre : menu **⋮** en haut à droite → *Settings*.
 
 **Option manuelle (ligne de commande)**
 
@@ -125,36 +144,69 @@ streamlit run app.py
 ```
 
 Dans les deux cas, un onglet s'ouvre dans ton navigateur (par défaut
-http://localhost:8501).
+http://127.0.0.1:8501). L'app n'est accessible **que depuis ton PC** : même
+sur un Wi-Fi partagé (école, café...), personne d'autre ne peut l'ouvrir
+(réglage `server.address` dans `.streamlit/config.toml`).
 
 ## Utilisation
 
-- **✉️ Nouvelle candidature** : colle l'annonce, précise si besoin
-  l'entreprise, le poste et son adresse, puis clique **une seule fois** sur
-  « Générer la candidature ». L'app rédige le contenu, crée les fichiers Word,
-  les convertit en PDF d'une page et affiche :
+- **✉️ Nouvelle candidature** : colle le lien de l'offre puis clique sur
+  « 📥 Importer » (ou colle directement le texte de l'annonce), vérifie
+  l'entreprise et le poste, choisis le CV de départ si tu en as plusieurs,
+  puis clique **une seule fois** sur « Générer la candidature ». Le bloc
+  « ⚙️ Options » permet d'indiquer l'adresse de l'entreprise, l'e-mail du
+  recruteur, le ton (sobre, dynamique, très formel), une lettre plus courte
+  et des remarques libres pour l'IA. L'app affiche ensuite :
   - le statut de chaque document (1 page, et le cas échéant le léger
     resserrement appliqué), la méthode de conversion et le modèle d'IA utilisés ;
   - les boutons de téléchargement, un **aperçu** de chaque PDF et un bouton
     pour ouvrir le dossier ;
-  - une zone **« Relire et retoucher »** : objet, paragraphes, formule de
-    politesse et chaque modification du CV (activable/désactivable) sont
-    modifiables, puis « Mettre à jour les fichiers » régénère Word + PDF
-    sans rappeler l'IA.
+  - **🎯 Analyse de l'offre** : correspondance estimée, tes atouts pour ce
+    poste, et ce que l'offre demande sans que ton CV le montre (à ajouter
+    seulement si c'est vrai — sinon, à préparer pour l'entretien) ;
+  - **✉️ E-mail et texte à copier** : l'e-mail d'accompagnement (objet et
+    message avec bouton de copie, ou ouverture directe dans ta messagerie)
+    et le **texte brut de la lettre**, pour les sites qui demandent de la
+    coller dans un champ plutôt que de joindre le PDF ;
+  - **✏️ Retouches** : objet, paragraphes, formule de politesse et chaque
+    modification du CV (activable/désactivable) sont modifiables ; le bouton
+    🔄 fait reformuler un seul paragraphe par l'IA (avec une consigne
+    facultative : « plus court », « insiste sur Power BI »...), puis
+    « Mettre à jour les fichiers » régénère Word + PDF sans rappeler l'IA.
 
   Chaque génération a son propre sous-dossier horodaté dans
   `outputs/<Entreprise>/` : rien n'est jamais écrasé. Si tu as déjà généré
-  une candidature pour la même entreprise, l'app te le signale.
-- **🕓 Historique** : toutes les candidatures générées, avec recherche,
-  retéléchargement des fichiers et accès au dossier. Le bouton 🗑️ retire
-  une entrée de la liste sans toucher aux fichiers.
-- **📎 Mon CV** : importe ton CV au format **.docx**. Il devient la référence
+  une candidature pour la même entreprise, l'app te le signale. Pour passer
+  à l'offre suivante, « 🧹 Nouvelle offre » vide le formulaire ; et si tu
+  colles directement une autre annonce, l'adresse, l'e-mail du recruteur ou
+  le lien restés de l'offre précédente sont retirés automatiquement (l'app te
+  le signale).
+- **🗂️ Mes candidatures** : toutes les candidatures générées, avec
+  recherche, filtre par statut, tri, retéléchargement des fichiers et accès
+  au dossier. Le bouton 🗑️ retire une entrée de la liste sans toucher aux
+  fichiers. **Suivi facultatif** — l'app fonctionne très bien sans :
+  - un statut par candidature (envoyée, relancée, entretien, acceptée,
+    refusée...), modifiable en un clic ;
+  - **🔔 À relancer** : les candidatures envoyées restées sans réponse depuis
+    10 jours (14 après une première relance), avec une relance rédigée par
+    l'IA à partir de la lettre envoyée ;
+  - **🎤 Préparer l'entretien** : une fiche (pitch de 30 secondes, questions
+    probables avec pistes de réponse tirées de ton vrai CV, questions à
+    poser), aussi enregistrée en Word imprimable dans le dossier ;
+  - des notes, l'e-mail du recruteur et le lien de l'offre ;
+  - un tableau de bord : nombre de candidatures, taux de réponse, activité
+    des 12 dernières semaines ;
+  - un **export de la liste pour Excel** (fichier .csv, avec la recherche et
+    le filtre en cours).
+- **📎 Mes CV** : importe ton CV au format **.docx**. Il devient la référence
   permanente : chaque candidature part d'une copie, il n'est jamais modifié.
-  Tu peux voir les blocs de texte détectés (🔒 = jamais modifié par l'IA :
-  coordonnées, liens, titres de section) et **vérifier qu'il tient sur une
-  page**.
-- **👤 Mon profil** : tes coordonnées (en-tête de chaque lettre) et ton
-  contexte académique (utilisé par l'IA pour situer ta candidature).
+  Tu peux ajouter des CV supplémentaires (choisis au moment de générer),
+  voir les blocs de texte détectés (🔒 = jamais modifié par l'IA :
+  coordonnées, liens, titres de section) et **vérifier qu'un CV tient sur
+  une page**.
+- **👤 Mon profil** : tes coordonnées (en-tête de chaque lettre), ton
+  contexte académique (utilisé par l'IA pour situer ta candidature), et la
+  **sauvegarde** de tes données (téléchargement d'une archive, restauration).
 
 ## Une page garantie : comment ça marche
 
@@ -201,15 +253,22 @@ n'est disponible, les fichiers **.docx** restent téléchargeables.
 
 Tout reste **en local**, dans le dossier du projet :
 
-- `data/cv_original.docx` — ton CV de référence
+- `data/cv_original.docx` — ton CV principal ; `data/cvs/` — tes CV
+  supplémentaires
 - `data/profil.json` — tes coordonnées
-- `data/historique.json` — l'historique des candidatures générées
-- `data/mise_en_page.json` — le réglage de mise en page mémorisé pour ton CV
-- `outputs/<Entreprise>/<poste_date>/` — les fichiers générés (PDF + Word)
+- `data/historique.json` — l'historique des candidatures (et leur suivi)
+- `data/mise_en_page.json` — le réglage de mise en page mémorisé par CV
+- `outputs/<Entreprise>/<poste_date>/` — les fichiers générés (PDF + Word,
+  et la fiche de préparation d'entretien si tu la demandes)
+- `sauvegardes/` — une sauvegarde automatique par jour de tout le dossier
+  `data/` (les 15 plus récentes sont gardées)
 
-Au moment de générer une candidature, le contenu de ton CV et de l'annonce
-est envoyé au fournisseur IA actif (Gemini par défaut, ou Anthropic), et à
-iLovePDF seulement si c'est lui qui fait la conversion PDF. Bon à savoir
+Au moment de générer une candidature (ou une relance, une fiche
+d'entretien, une reformulation), le contenu de ton CV et de l'annonce est
+envoyé au fournisseur IA actif (Gemini par défaut, ou Anthropic), et à
+iLovePDF seulement si c'est lui qui fait la conversion PDF. L'import par
+lien lit simplement la page de l'offre sur le site concerné, comme le
+ferait ton navigateur. Bon à savoir
 pour Gemini : sur le palier gratuit, Google peut utiliser les contenus
 envoyés pour améliorer ses produits, **sauf pour les utilisateurs situés
 dans l'Espace économique européen (donc en France), au Royaume-Uni et en
@@ -220,6 +279,12 @@ Suisse**, à qui s'appliquent les mêmes règles que pour le palier payant
 
 - **Formats acceptés pour le CV : .docx uniquement** (pas de PDF : un PDF ne
   peut pas être réédité en préservant sa mise en page).
+- **Import par lien** : certains sites (LinkedIn connecté, Indeed...)
+  bloquent la lecture automatique ou affichent l'offre seulement après
+  connexion ; l'app le dit clairement et il suffit alors de coller le texte
+  de l'annonce.
+- L'**analyse de l'offre** est une estimation de l'IA, à prendre comme un
+  indicateur et non comme une note.
 - Le texte contenu dans des **zones de texte, images ou SmartArt** n'est pas
   détecté — seuls les paragraphes et tableaux Word « standards » sont lus
   et modifiables (vérifie la liste dans l'onglet « Mon CV »).
@@ -262,17 +327,22 @@ app.py                          interface Streamlit (4 onglets)
 Lancer.bat                      double-clic pour démarrer (installe les dépendances si besoin)
 Creer_raccourci.vbs             à exécuter une fois pour créer le raccourci Bureau
 icon.ico                        icône utilisée par le raccourci
+.streamlit/config.toml          réglages Streamlit (accès local uniquement, thèmes clair/sombre)
 src/
   candidature.py                assemble lettre + CV adapté + PDF d'une page
   mise_en_page.py               mesure des PDF et resserrement progressif (1 page garantie)
   cv_editor.py                  extraction/édition du CV Word en conservant la mise en forme
   lettre_generator.py           rendu du gabarit de lettre (docxtpl) + typographie française
   pdf_export.py                 conversion .docx -> .pdf (Word, LibreOffice, iLovePDF)
+  import_offre.py               import d'une offre depuis son lien (JSON-LD JobPosting, sécurisé)
   ai_client.py                  bascule vers le fournisseur IA actif (FOURNISSEUR_IA)
   ia_commun.py                  schéma, prompt et parsing partagés entre fournisseurs
   ia_gemini.py                  fournisseur Gemini (gratuit, par défaut)
   ia_anthropic.py               fournisseur Anthropic/Claude (payant, alternatif)
-  stockage.py                   profil, historique, réglages (fichiers JSON locaux)
+  assistant.py                  relances, fiches d'entretien, reformulation d'un paragraphe
+  suivi.py                      statuts, relances à faire, statistiques (suivi facultatif)
+  stockage.py                   profil, CV, historique, sauvegardes (fichiers locaux)
+  version.py                    numéro de version affiché dans l'app
 scripts/
   generer_gabarit_lettre.py     génère templates/lettre_template.docx
 templates/
@@ -281,6 +351,7 @@ tests/                          tests automatisés (pytest)
 docs/apercu.png                 capture d'écran pour ce README
 data/                           CV, profil, historique (non versionné)
 outputs/                        fichiers générés (non versionné)
+sauvegardes/                    sauvegardes automatiques de data/ (non versionné)
 ```
 
 ## Licence

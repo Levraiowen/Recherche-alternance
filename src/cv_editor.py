@@ -12,8 +12,9 @@ réécrits.
 
 Garde-fous :
 - Certains blocs ne sont jamais modifiés (coordonnées, liens, titres de
-  section en majuscules, paragraphes contenant une image ou un champ Word) :
-  ils sont envoyés à l'IA comme contexte, marqués "modifiable": false.
+  section en majuscules, paragraphes contenant une image, un champ Word, des
+  modifications suivies ou un contrôle de contenu) : ils sont envoyés à l'IA
+  comme contexte, marqués "modifiable": false.
 - Une adaptation nettement plus longue que le texte d'origine est ignorée
   (elle risquerait d'ajouter des lignes et de faire déborder le CV) ; elle
   est signalée dans le rapport renvoyé.
@@ -94,12 +95,32 @@ def _iterer_paragraphes_identifies(document) -> Iterator[tuple[str, Paragraph]]:
         yield from _paragraphes_non_vides(section.footer.paragraphs, f"f{si}_p")
 
 
+# Contenus qu'une réécriture « run par run » abîmerait : liens, champs, images,
+# modifications suivies (insertion/suppression non acceptées), contrôles de
+# contenu des modèles de CV Word, balises intelligentes, équations...
+_BALISES_PROTEGEES = tuple(qn(b) for b in (
+    "w:hyperlink", "w:fldSimple", "w:fldChar", "w:drawing", "w:pict", "w:object", "w:ins", "w:del",
+    "w:moveFrom", "w:moveTo", "w:sdt", "w:smartTag", "w:customXml", "w:subDoc", "w:ruby",
+)) + ("{http://schemas.openxmlformats.org/officeDocument/2006/math}oMath",)
+
+
+def _sans_blancs(texte: str) -> str:
+    return re.sub(r"\s+", "", texte)
+
+
 def _est_protege(paragraphe: Paragraph) -> bool:
     """Blocs à ne jamais réécrire automatiquement."""
     element = paragraphe._p
-    for balise in ("w:hyperlink", "w:fldSimple", "w:fldChar", "w:drawing", "w:pict", "w:object"):
-        if element.find(".//" + qn(balise)) is not None:
-            return True
+    if any(element.find(".//" + balise) is not None for balise in _BALISES_PROTEGEES):
+        return True
+    # Filet de sécurité : du texte présent dans le paragraphe mais invisible
+    # pour python-docx (structure Word inhabituelle) ne doit jamais être perdu.
+    tout_le_texte = "".join(
+        "-" if e.tag == qn("w:noBreakHyphen") else (e.text or "")
+        for e in element.iter(qn("w:t"), qn("w:noBreakHyphen"))
+    )
+    if _sans_blancs(tout_le_texte) != _sans_blancs(paragraphe.text):
+        return True
     texte = paragraphe.text.strip()
     if _MOTIF_EMAIL.search(texte) or _MOTIF_TELEPHONE.search(texte) or _MOTIF_URL.search(texte):
         return True
@@ -253,7 +274,7 @@ def appliquer_adaptations(
         nouveau = restants.pop(identifiant).strip()
         bloc = BlocTexte(identifiant, paragraphe.text, len(paragraphe.text), not _est_protege(paragraphe))
         if not bloc.modifiable:
-            rapport.ignores[identifiant] = "bloc protégé (coordonnées, lien ou titre de section)"
+            rapport.ignores[identifiant] = "bloc protégé (coordonnées, lien, titre de section ou contenu Word spécial)"
         elif not nouveau:
             rapport.ignores[identifiant] = "texte proposé vide"
         elif _normaliser(nouveau) == _normaliser(bloc.texte):

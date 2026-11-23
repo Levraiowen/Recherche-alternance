@@ -9,11 +9,13 @@ du texte sans rappeler l'IA.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
 import mise_en_page
+import pdf_export
 import stockage
 from cv_editor import RapportAdaptations, appliquer_adaptations
 from lettre_generator import generer_lettre
@@ -59,62 +61,84 @@ def produire_candidature(
     dossier: Path,
     cv_reference: Path | None = None,
     convertir: Callable[[Path], tuple[Path, str]] = convertir_en_pdf,
+    progression: Callable[[str], None] | None = None,
+    en_parallele: bool | None = None,
 ) -> ResultatCandidature:
     """Crée les deux fichiers Word dans `dossier`, puis leurs PDF sur une
-    page. Une erreur de conversion PDF n'empêche jamais d'obtenir les .docx
-    (elle est simplement rapportée dans `erreurs_pdf`)."""
+    page (en parallèle quand le convertisseur le permet). Une erreur de
+    conversion PDF n'empêche jamais d'obtenir les .docx (elle est simplement
+    rapportée dans `erreurs_pdf`). `progression(message)` est appelé à chaque
+    étape, depuis le fil d'exécution de l'appelant uniquement."""
+    signaler = progression or (lambda _message: None)
     cv_reference = cv_reference or stockage.FICHIER_CV
     nom_lettre, nom_cv = noms_fichiers(profil.get("nom", ""), resultat.entreprise)
     chemin_lettre = dossier / f"{nom_lettre}.docx"
     chemin_cv = dossier / f"{nom_cv}.docx"
 
+    signaler("📄 Création des fichiers Word (lettre et CV adapté)...")
     generer_lettre(resultat=resultat, profil=profil, entreprise_adresse=entreprise_adresse,
                    chemin_sortie=chemin_lettre)
     rapport = appliquer_adaptations(cv_reference, chemin_cv, resultat.cv_adaptations)
     sortie = ResultatCandidature(chemin_lettre, chemin_cv, rapport)
 
-    try:
-        sortie.lettre = mise_en_page.ajuster_sur_une_page(
-            chemin_lettre, convertir, profil=mise_en_page.PROFIL_LETTRE
-        )
-    except ErreurConversionPDF as exc:
-        sortie.erreurs_pdf.append(str(exc))
-        return sortie  # inutile d'essayer le CV : même convertisseur, même échec
+    # Réglage mémorisé propre à CE CV de référence et, si on le connaît
+    # déjà, à ce convertisseur (Word et LibreOffice ne mettent pas tout à
+    # fait en page pareil).
+    empreinte = stockage.empreinte_fichier(cv_reference)
+    methode_connue = pdf_export.methode_preferee() if convertir is convertir_en_pdf else None
+    niveau_depart = stockage.niveau_cv_memorise(f"{empreinte}:{methode_connue}" if methode_connue else empreinte)
 
-    # Réglage mémorisé propre à CE CV de référence ET à ce convertisseur
-    # (Word et LibreOffice ne mettent pas tout à fait en page pareil).
-    empreinte = ""
-    if cv_reference == stockage.FICHIER_CV:
-        empreinte = f"{stockage.empreinte_cv()}:{sortie.lettre.methode}"
-    niveau_depart = stockage.niveau_cv_memorise(empreinte) if empreinte else 0
-    try:
-        sortie.cv = mise_en_page.ajuster_sur_une_page(
+    def faire_lettre() -> mise_en_page.ResultatMiseEnPage:
+        return mise_en_page.ajuster_sur_une_page(chemin_lettre, convertir, profil=mise_en_page.PROFIL_LETTRE)
+
+    def faire_cv() -> mise_en_page.ResultatMiseEnPage:
+        return mise_en_page.ajuster_sur_une_page(
             chemin_cv, convertir, profil=mise_en_page.PROFIL_CV, niveau_depart=niveau_depart
         )
-    except ErreurConversionPDF as exc:
-        sortie.erreurs_pdf.append(str(exc))
-        return sortie
 
-    if empreinte and sortie.cv.mesure is not None:
+    if en_parallele is None:
+        en_parallele = convertir is not convertir_en_pdf or pdf_export.conversion_parallele_possible()
+    signaler("🖨️ Conversion en PDF et mise en page sur une page"
+             + (" (lettre et CV en parallèle)..." if en_parallele else "..."))
+    if en_parallele:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futurs = {"lettre": pool.submit(faire_lettre), "cv": pool.submit(faire_cv)}
+            for nom, futur in futurs.items():
+                try:
+                    setattr(sortie, nom, futur.result())
+                except ErreurConversionPDF as exc:
+                    if str(exc) not in sortie.erreurs_pdf:
+                        sortie.erreurs_pdf.append(str(exc))
+    else:
+        try:
+            sortie.lettre = faire_lettre()
+            sortie.cv = faire_cv()
+        except ErreurConversionPDF as exc:
+            sortie.erreurs_pdf.append(str(exc))  # même convertisseur : inutile d'insister
+
+    if empreinte and sortie.cv is not None and sortie.cv.mesure is not None:
         niveau = sortie.cv.niveau
         trop_resserre = mise_en_page.niveau_inferieur_suffirait(niveau, sortie.cv.mesure, mise_en_page.PROFIL_CV)
         if sortie.cv.une_page and trop_resserre:
             niveau -= 1  # la prochaine fois, on tente un cran plus aéré
-        stockage.memoriser_niveau_cv(empreinte, niveau)
+        stockage.memoriser_niveau_cv(f"{empreinte}:{sortie.cv.methode}", niveau)
     return sortie
 
 
 def verifier_cv_reference(
     dossier_temporaire: Path,
     convertir: Callable[[Path], tuple[Path, str]] = convertir_en_pdf,
+    cv_reference: Path | None = None,
 ) -> mise_en_page.ResultatMiseEnPage:
-    """Teste la mise en page du CV de référence tel quel (sans adaptation) :
+    """Teste la mise en page d'un CV de référence tel quel (sans adaptation) :
     sert au bouton « Vérifier que mon CV tient sur 1 page » et initialise le
     niveau mémorisé pour les candidatures suivantes."""
+    cv_reference = cv_reference or stockage.FICHIER_CV
     dossier_temporaire.mkdir(parents=True, exist_ok=True)
     copie = dossier_temporaire / "CV_reference_test.docx"
-    copie.write_bytes(stockage.FICHIER_CV.read_bytes())
+    copie.write_bytes(cv_reference.read_bytes())
     resultat = mise_en_page.ajuster_sur_une_page(copie, convertir, profil=mise_en_page.PROFIL_CV)
     if resultat.mesure is not None:
-        stockage.memoriser_niveau_cv(f"{stockage.empreinte_cv()}:{resultat.methode}", resultat.niveau)
+        stockage.memoriser_niveau_cv(f"{stockage.empreinte_fichier(cv_reference)}:{resultat.methode}",
+                                     resultat.niveau)
     return resultat

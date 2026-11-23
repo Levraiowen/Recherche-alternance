@@ -6,13 +6,28 @@ on:
 
 jobs:
   tests:
+    name: Python ${{ matrix.python }} · ${{ matrix.libelle }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Versions utilisées en pratique : Python 3.12, dépendances à jour.
+          - python: "3.12"
+            libelle: "dernières versions"
+            contraintes: ""
+          # Versions minimales déclarées (pyproject.toml, requirements.txt) :
+          # repère tout de suite une fonction trop récente de Streamlit qui
+          # planterait chez quelqu'un dont l'installation date un peu.
+          - python: "3.10"
+            libelle: "versions minimales"
+            contraintes: "streamlit==1.52.0"
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
           cache: pip
 
       # LibreOffice + police Carlito (métriques identiques à Calibri) : pour
@@ -24,7 +39,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends libreoffice-writer fonts-crosextra-carlito
 
       - name: Installer les dépendances
-        run: pip install -r requirements-dev.txt
+        run: pip install -r requirements-dev.txt ${{ matrix.contraintes }}
 
       - name: Vérifier le code (ruff)
         run: ruff check .
